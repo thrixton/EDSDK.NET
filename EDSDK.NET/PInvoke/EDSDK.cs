@@ -170,7 +170,10 @@ namespace EDSDKLib
 		public const uint   PropID_Evf_HistogramStatus     = 0x0000050C;
         public const uint   PropID_Evf_AFMode              = 0x0000050E;
 
-		public const uint   PropID_Record                  = 0x00000510;
+        // Manually added, copy from 2.10 API, referenced in API guide but not present
+        public const uint PropID_Evf_CoordinateSystem = 0x00000540;
+
+        public const uint   PropID_Record                  = 0x00000510;
              
         /*----------------------------------
          Image GPS Properties
