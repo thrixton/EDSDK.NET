@@ -15,7 +15,7 @@ namespace EDSDK.NET
     /// <summary>
     /// Handles the Canon SDK
     /// </summary>
-    class CameraController : IDisposable
+    public class CameraController : IDisposable
     {
         #region Variables
 
