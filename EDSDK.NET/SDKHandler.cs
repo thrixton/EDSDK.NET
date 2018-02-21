@@ -95,6 +95,42 @@ namespace EDSDK.NET
         /// For video recording, SaveTo has to be set to Camera. This is to store the previous setting until after the filming.
         /// </summary>
         private uint PrevSaveTo;
+
+        public void SetUintSetting(string propertyName, string propertyValue)
+        {
+            uint value;
+            bool error = false;
+            if (!string.IsNullOrEmpty(propertyValue))
+            {
+                propertyValue = propertyValue.Replace("0x", "");
+            }
+
+            if(!uint.TryParse(propertyValue, NumberStyles.HexNumber, CultureInfo.CurrentCulture, out value))
+            {
+                LogError("Could not convert value {0} to uint", propertyValue);
+                error = true;
+            }
+
+            if(!string.IsNullOrEmpty(propertyName) && propertyName.StartsWith("kEds"))
+            {
+                propertyName = propertyName.Substring(4);
+            }
+
+
+            var prop = GetSDKProperty(propertyName);
+            if (!prop.Matched)
+            {
+                LogWarning("Could not find property named {0}");
+            }
+
+            if (!error)
+            {
+                SetSetting(prop.Value, value);
+            }
+
+
+        }
+
         /// <summary>
         /// The thread on which the live view images will get downloaded continuously
         /// </summary>
@@ -180,22 +216,39 @@ namespace EDSDK.NET
             }
         }
 
+        private SDKProperty FindProperty(SDKProperty[] properties, string property)
+        {
+            var search = properties.FirstOrDefault(p => p.Name == property);
+            if (search == null)
+            {
+                search = new SDKProperty(property, 0, false);
+            }
+            return search;
+        }
+
+
         private SDKProperty FindProperty(SDKProperty[] properties, uint property)
         {
             var search = properties.FirstOrDefault(p => p.Value == property);
             if (search == null)
             {
-                search = new SDKProperty("UNKNOWN", property);
+                search = new SDKProperty("UNKNOWN", property, false);
             }
             return search;
         }
 
-        public SDKProperty SDKStateEventToProperty(uint stateEvent)
+        public SDKProperty GetStateEvent(uint stateEvent)
         {
             return FindProperty(SDKStateEvents, stateEvent);
         }
 
-        public SDKProperty SDKPropertyToProperty(uint property)
+        public SDKProperty GetSDKProperty(string property)
+        {
+            return FindProperty(SDKProperties, property);
+        }
+
+
+        public SDKProperty GetSDKProperty(uint property)
         {
             return FindProperty(SDKProperties, property);
         }
@@ -664,7 +717,7 @@ namespace EDSDK.NET
         private uint Camera_SDKStateEvent(uint inEvent, uint inParameter, IntPtr inContext)
         {
 
-            var stateProperty = SDKStateEventToProperty(inEvent);
+            var stateProperty = GetStateEvent(inEvent);
 
             LogInfo("SDK State Event. Name: {0}, Value {1}", stateProperty.Name, stateProperty.ValueToString());
 
@@ -1062,7 +1115,7 @@ namespace EDSDK.NET
 
         void LogSetProperty(uint propertyId)
         {
-            var prop = SDKPropertyToProperty(propertyId);
+            var prop = GetSDKProperty(propertyId);
             LogInfo("Setting property. Name: {0}, Id: {1}", prop.Name, prop.Value);
         }
 
@@ -1404,6 +1457,11 @@ namespace EDSDK.NET
             {
                 logger.LogError(ex, message, args);
             }
+        }
+
+        private void LogWarning(string message, params object[] args)
+        {
+            Log(LogLevel.Warning, message, args);
         }
 
         private void LogError(string message, params object[] args)
