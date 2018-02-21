@@ -129,10 +129,22 @@ namespace EDSDK.NET
                 while (true)
                 {
                     Monitor.Wait(threadLock);
-                    if (!isRunning) return;
+                    if (!isRunning)
+                    {
+                        return;
+                    }
                     runException = null;
-                    try { lock (ExecLock) { runAction(); } }
-                    catch (Exception ex) { runException = ex; }
+                    try
+                    {
+                        lock (ExecLock)
+                        {
+                            runAction();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        runException = ex;
+                    }
                     Monitor.Pulse(threadLock);
                 }
             }

@@ -491,7 +491,7 @@ namespace EDSDKLib
         public const uint   AEMode_Program          = 0;
         public const uint   AEMode_Tv               = 1;
         public const uint   AEMode_Av               = 2;
-        public const uint   AEMode_Mamual           = 3;
+        public const uint   AEMode_Manual           = 3;
         public const uint   AEMode_Bulb             = 4;
         public const uint   AEMode_A_DEP            = 5;
         public const uint   AEMode_DEP              = 6;

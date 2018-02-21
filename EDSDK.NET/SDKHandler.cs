@@ -9,6 +9,9 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
 using static EDSDKLib.EDSDK;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using System.Reflection;
 
 namespace EDSDK.NET
 {
@@ -18,6 +21,8 @@ namespace EDSDK.NET
     public class SDKHandler : IDisposable
     {
         #region Variables
+
+        ILogger logger;
 
         /// <summary>
         /// The used camera
@@ -39,6 +44,12 @@ namespace EDSDK.NET
         /// Directory to where photos will be saved
         /// </summary>
         public string ImageSaveDirectory { get; set; }
+
+        /// <summary>
+        /// File name of next photo
+        /// </summary>
+        public string ImageSaveFileName { get; set; }
+
         /// <summary>
         /// The focus and zoom border rectangle for live view (set after first use of live view)
         /// </summary>
@@ -69,7 +80,8 @@ namespace EDSDK.NET
             {
                 if (value != EDS_ERR_OK)
                 {
-                    throw new Exception("SDK Error: 0x" + value.ToString("X"));
+                    var errorProperty = SDKErrorToProperty(value);
+                    LogError("SDK Error. Name: {0}, Value: {1}", errorProperty.Name, errorProperty.ValueToString());
                 }
             }
         }
@@ -140,11 +152,83 @@ namespace EDSDK.NET
 
         #region Basic SDK and Session handling
 
+        public SDKProperty SDKObjectEventToProperty(uint objectEvent)
+        {
+            return FindProperty(SDKObjectEvents, objectEvent);
+        }
+
+        SDKProperty[] _sDKObjectEvents;
+        public SDKProperty[] SDKObjectEvents
+        {
+            get
+            {
+                return _sDKObjectEvents;
+            }
+        }
+
+        public SDKProperty SDKErrorToProperty(uint error)
+        {
+            return FindProperty(SDKErrors, error);
+        }
+
+        SDKProperty[] _sDKErrors;
+        public SDKProperty[] SDKErrors
+        {
+            get
+            {
+                return _sDKErrors;
+            }
+        }
+
+        private SDKProperty FindProperty(SDKProperty[] properties, uint property)
+        {
+            var search = properties.FirstOrDefault(p => p.Value == property);
+            if (search == null)
+            {
+                search = new SDKProperty("UNKNOWN", property);
+            }
+            return search;
+        }
+
+        public SDKProperty SDKStateEventToProperty(uint stateEvent)
+        {
+            return FindProperty(SDKStateEvents, stateEvent);
+        }
+
+        public SDKProperty SDKPropertyToProperty(uint property)
+        {
+            return FindProperty(SDKProperties, property);
+        }
+
+        SDKProperty[] _sDKProperties;
+        public SDKProperty[] SDKProperties
+        {
+            get
+            {
+                return _sDKProperties;
+            }
+        }
+
+        SDKProperty[] _sDKStateEvents;
+        public SDKProperty[] SDKStateEvents
+        {
+            get
+            {
+                return _sDKStateEvents;
+            }
+        }
+
+        public object Value { get; private set; }
+
         /// <summary>
         /// Initializes the SDK and adds events
         /// </summary>
-        public SDKHandler()
+        public SDKHandler(ILogger<SDKHandler> logger)
         {
+            this.logger = logger;
+
+            PopulateSDKConstantStructures();
+
             //initialize SDK
             Error = EdsInitializeSDK();
             STAThread.Init();
@@ -158,6 +242,26 @@ namespace EDSDK.NET
             SDKProgressCallbackEvent += new EdsProgressCallback(Camera_SDKProgressCallbackEvent);
             SDKObjectEvent += new EdsObjectEventHandler(Camera_SDKObjectEvent);
         }
+
+        private void PopulateSDKConstantStructures()
+        {
+            FieldInfo[] fields = typeof(EDSDKLib.EDSDK).GetFields(BindingFlags.Public | BindingFlags.Static);
+
+            _sDKStateEvents = FilterFields(fields, "StateEvent_");
+            _sDKObjectEvents = FilterFields(fields, "ObjectEvent_");
+            _sDKErrors = FilterFields(fields, "EDS_ERR_");
+            _sDKProperties = FilterFields(fields, "kEdsPropID_", "PropID_");
+        }
+
+
+        static SDKProperty[] FilterFields(FieldInfo[] fields, string prefix, string prefix2 = null)
+        {
+            var filteredFields = from f in fields
+                                 where (f.Name.StartsWith(prefix) || (prefix2 != null && f.Name.StartsWith(prefix2))) && f.IsLiteral
+                                 select new SDKProperty(f.Name, (uint)f.GetValue(null));
+            return filteredFields.ToArray();
+        }
+
 
         /// <summary>
         /// Get a list of all connected cameras
@@ -173,15 +277,23 @@ namespace EDSDK.NET
             int c;
             //get amount of connected cameras
             Error = EdsGetChildCount(camlist, out c);
-            List<Camera> OutCamList = new List<Camera>();
+            List<Camera> camList = new List<Camera>();
             for (int i = 0; i < c; i++)
             {
                 IntPtr cptr;
                 //get pointer to camera at index i
                 Error = EdsGetChildAtIndex(camlist, i, out cptr);
-                OutCamList.Add(new Camera(cptr));
+                camList.Add(new Camera(cptr));
             }
-            return OutCamList;
+
+            LogInfo("Found {0} cameras", camList.Count);
+
+            return camList;
+        }
+
+        private void LogInfo(string message, params object[] args)
+        {
+            Log(LogLevel.Information, message, args);
         }
 
         /// <summary>
@@ -195,12 +307,20 @@ namespace EDSDK.NET
             {
                 MainCamera = newCamera;
                 //open a session
-                SendSDKCommand(delegate { Error = EdsOpenSession(MainCamera.Ref); });
+                SendSDKCommand(delegate { Error = EdsOpenSession(MainCamera.Ref); }, sdkAction: nameof(EdsOpenSession));
                 //subscribe to the camera events (for the SDK)
                 EdsSetCameraStateEventHandler(MainCamera.Ref, StateEvent_All, SDKStateEvent, MainCamera.Ref);
                 EdsSetObjectEventHandler(MainCamera.Ref, ObjectEvent_All, SDKObjectEvent, MainCamera.Ref);
                 EdsSetPropertyEventHandler(MainCamera.Ref, PropertyEvent_All, SDKPropertyEvent, MainCamera.Ref);
                 CameraSessionOpen = true;
+
+                /*vvv This should be extracted out into a settings option to pass through*/
+
+                SetSaveToHost();
+                SetCapacity();
+
+                /*^^^ This should be extracted out into a settings option to pass through*/
+
             }
         }
 
@@ -224,7 +344,7 @@ namespace EDSDK.NET
                 EdsSetPropertyEventHandler(MainCamera.Ref, PropertyEvent_All, null, MainCamera.Ref);
 
                 //close session and release camera
-                SendSDKCommand(delegate { Error = EdsCloseSession(MainCamera.Ref); });
+                SendSDKCommand(delegate { Error = EdsCloseSession(MainCamera.Ref); }, sdkAction: nameof(EdsCloseSession));
                 uint c = EdsRelease(MainCamera.Ref);
                 CameraSessionOpen = false;
             }
@@ -268,6 +388,8 @@ namespace EDSDK.NET
         /// <returns>An EDSDK errorcode</returns>
         private uint Camera_SDKObjectEvent(uint inEvent, IntPtr inRef, IntPtr inContext)
         {
+            var eventProperty = SDKObjectEventToProperty(inEvent);
+            LogInfo("SDK Object Event. Name: {0}, Value: {1}", eventProperty.Name, eventProperty.ValueToString());
             //handle object event here
             switch (inEvent)
             {
@@ -278,14 +400,18 @@ namespace EDSDK.NET
                 case ObjectEvent_DirItemContentChanged:
                     break;
                 case ObjectEvent_DirItemCreated:
-                    if (DownloadVideo) { DownloadImage(inRef, ImageSaveDirectory); DownloadVideo = false; }
+                    if (DownloadVideo)
+                    {
+                        DownloadImage(inRef, ImageSaveDirectory, ImageSaveFileName);
+                        DownloadVideo = false;
+                    }
                     break;
                 case ObjectEvent_DirItemInfoChanged:
                     break;
                 case ObjectEvent_DirItemRemoved:
                     break;
                 case ObjectEvent_DirItemRequestTransfer:
-                    DownloadImage(inRef, ImageSaveDirectory);
+                    DownloadImage(inRef, ImageSaveDirectory, ImageSaveFileName);
                     break;
                 case ObjectEvent_DirItemRequestTransferDT:
                     break;
@@ -537,6 +663,11 @@ namespace EDSDK.NET
         /// <returns>An EDSDK errorcode</returns>
         private uint Camera_SDKStateEvent(uint inEvent, uint inParameter, IntPtr inContext)
         {
+
+            var stateProperty = SDKStateEventToProperty(inEvent);
+
+            LogInfo("SDK State Event. Name: {0}, Value {1}", stateProperty.Name, stateProperty.ValueToString());
+
             //Handle state event here
             switch (inEvent)
             {
@@ -576,18 +707,41 @@ namespace EDSDK.NET
         /// </summary>
         /// <param name="ObjectPointer">Pointer to the object. Get it from the SDKObjectEvent.</param>
         /// <param name="directory">Path to where the image will be saved to</param>
-        public void DownloadImage(IntPtr ObjectPointer, string directory)
+        public void DownloadImage(IntPtr ObjectPointer, string directory, string fileName)
         {
             EdsDirectoryItemInfo dirInfo;
             IntPtr streamRef;
             //get information about object
             Error = EdsGetDirectoryItemInfo(ObjectPointer, out dirInfo);
-            string CurrentPhoto = Path.Combine(directory, dirInfo.szFileName);
+            if (string.IsNullOrEmpty(fileName))
+            {
+                fileName = dirInfo.szFileName;
+            }
+            else
+            {
+                FileInfo targetInfo = new FileInfo(fileName);
+                FileInfo cameraInfo = new FileInfo(dirInfo.szFileName);
+
+                if (!string.Equals(targetInfo.Extension, cameraInfo.Extension, StringComparison.CurrentCultureIgnoreCase))
+                {
+                    fileName = targetInfo.Name.Substring(0, targetInfo.Name.Length - targetInfo.Extension.Length) + cameraInfo.Extension;
+                }
+            }
+
+
+            string targetImage = Path.Combine(directory, fileName);
+            if (File.Exists(targetImage))
+            {
+
+            }
+
+
+            LogInfo("Downloading image {0} to {1}", fileName, directory);
 
             SendSDKCommand(delegate
             {
                 //create filestream to data
-                Error = EdsCreateFileStream(CurrentPhoto, EdsFileCreateDisposition.CreateAlways, EdsAccess.ReadWrite, out streamRef);
+                Error = EdsCreateFileStream(targetImage, EdsFileCreateDisposition.CreateAlways, EdsAccess.ReadWrite, out streamRef);
                 //download file
                 lock (STAThread.ExecLock) { DownloadData(ObjectPointer, streamRef); }
                 //release stream
@@ -607,6 +761,10 @@ namespace EDSDK.NET
 
             //check the extension. Raw data cannot be read by the bitmap class
             string ext = Path.GetExtension(dirInfo.szFileName).ToLower();
+
+            LogInfo("Downloading image {0}", dirInfo.szFileName);
+
+
             if (ext == ".jpg" || ext == ".jpeg")
             {
                 SendSDKCommand(delegate
@@ -858,6 +1016,8 @@ namespace EDSDK.NET
 
         #region Set Settings
 
+
+
         /// <summary>
         /// Sets an uint value for the given property ID
         /// </summary>
@@ -865,6 +1025,7 @@ namespace EDSDK.NET
         /// <param name="Value">The value which will be set</param>
         public void SetSetting(uint PropID, uint Value)
         {
+            LogSetProperty(PropID);
             if (MainCamera.Ref != IntPtr.Zero)
             {
                 SendSDKCommand(delegate
@@ -875,9 +1036,34 @@ namespace EDSDK.NET
                     Error = EdsGetPropertySize(MainCamera.Ref, PropID, 0, out proptype, out propsize);
                     //set given property
                     Error = EdsSetPropertyData(MainCamera.Ref, PropID, 0, propsize, Value);
-                });
+                }, sdkAction: nameof(EdsSetPropertyData));
             }
             else { throw new ArgumentNullException("Camera or camera reference is null/zero"); }
+        }
+
+        /// <summary>
+        /// Sets a DateTime value for the given property ID
+        /// </summary>
+        /// <param name="PropID">The property ID</param>
+        /// <param name="Value">The value which will be set</param>
+        public void SetDateTimeSetting(uint propertyId, DateTime value)
+        {
+            EDSDKLib.EDSDK.EdsTime dateTime = new EDSDKLib.EDSDK.EdsTime()
+            {
+                Year = value.Year,
+                Month = value.Month,
+                Day = value.Day,
+                Hour = value.Hour,
+                Minute = value.Minute,
+                Second = value.Second
+            };
+            SetStructSetting(propertyId, dateTime);
+        }
+
+        void LogSetProperty(uint propertyId)
+        {
+            var prop = SDKPropertyToProperty(propertyId);
+            LogInfo("Setting property. Name: {0}, Id: {1}", prop.Name, prop.Value);
         }
 
         /// <summary>
@@ -887,6 +1073,8 @@ namespace EDSDK.NET
         /// <param name="Value">The value which will be set</param>
         public void SetStringSetting(uint PropID, string Value)
         {
+            LogSetProperty(PropID);
+            //TODO: Refactor to remove duplicate code in Set_XXX_Setting methods
             if (MainCamera.Ref != IntPtr.Zero)
             {
                 if (Value == null) throw new ArgumentNullException("String must not be null");
@@ -899,7 +1087,7 @@ namespace EDSDK.NET
                 if (propertySize > 32) throw new ArgumentOutOfRangeException("Value must be smaller than 32 bytes");
 
                 //set value
-                SendSDKCommand(delegate { Error = EdsSetPropertyData(MainCamera.Ref, PropID, 0, 32, propertyValueBytes); });
+                SendSDKCommand(delegate { Error = EdsSetPropertyData(MainCamera.Ref, PropID, 0, 32, propertyValueBytes); }, sdkAction: nameof(EdsSetPropertyData));
             }
             else { throw new ArgumentNullException("Camera or camera reference is null/zero"); }
         }
@@ -911,9 +1099,10 @@ namespace EDSDK.NET
         /// <param name="Value">The value which will be set</param>
         public void SetStructSetting<T>(uint PropID, T Value) where T : struct
         {
+            LogSetProperty(PropID);
             if (MainCamera.Ref != IntPtr.Zero)
             {
-                SendSDKCommand(delegate { Error = EdsSetPropertyData(MainCamera.Ref, PropID, 0, Marshal.SizeOf(typeof(T)), Value); });
+                SendSDKCommand(delegate { Error = EdsSetPropertyData(MainCamera.Ref, PropID, 0, Marshal.SizeOf(typeof(T)), Value); }, sdkAction: nameof(EdsSetPropertyData));
             }
             else { throw new ArgumentNullException("Camera or camera reference is null/zero"); }
         }
@@ -1132,6 +1321,107 @@ namespace EDSDK.NET
             }, true);
         }
 
+        private TaskCompletionSource<FileInfo> takePhotoCompletionSource = new TaskCompletionSource<FileInfo>();
+
+
+        /// <summary>
+        /// Takes a photo and returns the file info
+        /// </summary>
+        /// <returns></returns>
+        public async Task<FileInfo> TakePhotoAsync(FileInfo saveFile)
+        {
+            return await Task.Run<FileInfo>(async () =>
+            {
+                SetSaveToLocation(saveFile.Directory);
+                this.ImageSaveFileName = saveFile.Name;
+
+                this.TakePhoto();
+
+                await takePhotoCompletionSource.Task;
+                if (takePhotoCompletionSource.Task.Status == TaskStatus.RanToCompletion)
+                {
+                    return takePhotoCompletionSource.Task.Result;
+                }
+                else
+                {
+                    LogError("Error taking photo, check previous messages");
+                    return null;
+                }
+            });
+
+        }
+
+        private void Log(LogLevel level, string message, params object[] args)
+        {
+            if (logger != null)
+            {
+                switch (level)
+                {
+                    case LogLevel.Trace:
+                        logger.LogTrace(message, args);
+                        break;
+
+                    case LogLevel.Debug:
+                        logger.LogDebug(message, args);
+                        break;
+
+                    case LogLevel.Information:
+                        logger.LogInformation(message, args);
+                        break;
+
+                    case LogLevel.Warning:
+                        logger.LogWarning(message, args);
+                        break;
+
+                    case LogLevel.Critical:
+                        logger.LogCritical(message, args);
+                        break;
+
+                    case LogLevel.None:
+                        // breakpoint only
+                        break;
+
+                    case LogLevel.Error:
+                        logger.LogError(message, args);
+                        break;
+
+                    default:
+                        logger.LogError("Unknown level: {0}{1}Message: {2}", level, Environment.NewLine, string.Format(message, args));
+                        break;
+                }
+            }
+
+            if (level >= LogLevel.Error)
+            {
+                // throw new Exception(string.Format(message, args));
+            }
+
+        }
+
+        private void HandleException(Exception ex, string message, params object[] args)
+        {
+            if (logger != null)
+            {
+                logger.LogError(ex, message, args);
+            }
+        }
+
+        private void LogError(string message, params object[] args)
+        {
+            Log(LogLevel.Error, message, args);
+        }
+
+        void SetSaveToHost()
+        {
+            this.SetSetting(PropID_SaveTo, (uint)EdsSaveTo.Host);
+        }
+
+        public void SetSaveToLocation(DirectoryInfo directory)
+        {
+            SetSaveToHost();
+            this.ImageSaveDirectory = directory.FullName;
+        }
+
         /// <summary>
         /// Takes a photo with the current camera settings
         /// </summary>
@@ -1148,11 +1438,11 @@ namespace EDSDK.NET
         /// <summary>
         /// Takes a photo in bulb mode with the current camera settings
         /// </summary>
-        /// <param name="BulbTime">The time in milliseconds for how long the shutter will be open</param>
-        public void TakePhoto(uint BulbTime)
+        /// <param name="bulbTime">The time in milliseconds for how long the shutter will be open</param>
+        public void TakePhoto(uint bulbTime)
         {
             //bulbtime has to be at least a second
-            if (BulbTime < 1000) { throw new ArgumentException("Bulbtime has to be bigger than 1000ms"); }
+            if (bulbTime < 1000) { throw new ArgumentException("Bulbtime has to be bigger than 1000ms"); }
 
             //start thread to not block everything
             SendSDKCommand(delegate
@@ -1160,7 +1450,7 @@ namespace EDSDK.NET
                 //open the shutter
                 lock (STAThread.ExecLock) { Error = EdsSendCommand(MainCamera.Ref, CameraCommand_BulbStart, 0); }
                 //wait for the specified time
-                Thread.Sleep((int)BulbTime);
+                Thread.Sleep((int)bulbTime);
                 //close shutter
                 lock (STAThread.ExecLock) { Error = EdsSendCommand(MainCamera.Ref, CameraCommand_BulbEnd, 0); }
             }, true);
@@ -1173,10 +1463,30 @@ namespace EDSDK.NET
         /// <summary>
         /// Sends a command to the camera safely
         /// </summary>
-        private void SendSDKCommand(Action command, bool longTask = false)
+        private void SendSDKCommand(Action command, bool longTask = false, string sdkAction = null)
         {
-            if (longTask) STAThread.Create(command).Start();
-            else STAThread.ExecuteSafely(command);
+            if (sdkAction != null)
+            {
+                LogInfo("Sending SDK command: {0}", sdkAction);
+            }
+
+
+            try
+            {
+                if (longTask)
+                {
+                    STAThread.Create(command).Start();
+                }
+                else
+                {
+                    STAThread.ExecuteSafely(command);
+                }
+
+            }
+            catch (Exception ex)
+            {
+                HandleException(ex, "Error sending command: {0}", sdkAction);
+            }
         }
 
         /// <summary>
@@ -1185,32 +1495,23 @@ namespace EDSDK.NET
         /// </summary>
         public void SetCapacity()
         {
-            //create new capacity struct
-            EdsCapacity capacity = new EdsCapacity();
-
-            //set big enough values
-            capacity.Reset = 1;
-            capacity.BytesPerSector = 0x1000;
-            capacity.NumberOfFreeClusters = 0x7FFFFFFF;
-
-            //set the values to camera
-            SendSDKCommand(delegate { Error = EdsSetCapacity(MainCamera.Ref, capacity); });
+            SetCapacity(0x1000, 0x7FFFFFFF);
         }
 
         /// <summary>
         /// Tells the camera how much space is available on the host PC
         /// </summary>
-        /// <param name="BytesPerSector">Bytes per sector on HD</param>
-        /// <param name="NumberOfFreeClusters">Number of free clusters on HD</param>
-        public void SetCapacity(int BytesPerSector, int NumberOfFreeClusters)
+        /// <param name="bytesPerSector">Bytes per sector on HD</param>
+        /// <param name="numberOfFreeClusters">Number of free clusters on HD</param>
+        public void SetCapacity(int bytesPerSector, int numberOfFreeClusters)
         {
             //create new capacity struct
             EdsCapacity capacity = new EdsCapacity();
 
             //set given values
             capacity.Reset = 1;
-            capacity.BytesPerSector = BytesPerSector;
-            capacity.NumberOfFreeClusters = NumberOfFreeClusters;
+            capacity.BytesPerSector = bytesPerSector;
+            capacity.NumberOfFreeClusters = numberOfFreeClusters;
 
             //set the values to camera
             SendSDKCommand(delegate { Error = EdsSetCapacity(MainCamera.Ref, capacity); });
@@ -1219,10 +1520,10 @@ namespace EDSDK.NET
         /// <summary>
         /// Moves the focus (only works while in live view)
         /// </summary>
-        /// <param name="Speed">Speed and direction of focus movement</param>
-        public void SetFocus(uint Speed)
+        /// <param name="speed">Speed and direction of focus movement</param>
+        public void SetFocus(uint speed)
         {
-            if (IsLiveViewOn) SendSDKCommand(delegate { Error = EdsSendCommand(MainCamera.Ref, CameraCommand_DriveLensEvf, (int)Speed); });
+            if (IsLiveViewOn) SendSDKCommand(delegate { Error = EdsSendCommand(MainCamera.Ref, CameraCommand_DriveLensEvf, (int)speed); });
         }
 
         /// <summary>
@@ -1285,12 +1586,12 @@ namespace EDSDK.NET
         /// <summary>
         /// Locks or unlocks the cameras UI
         /// </summary>
-        /// <param name="LockState">True for locked, false to unlock</param>
-        public void UILock(bool LockState)
+        /// <param name="lockState">True for locked, false to unlock</param>
+        public void UILock(bool lockState)
         {
             SendSDKCommand(delegate
             {
-                if (LockState == true) Error = EdsSendStatusCommand(MainCamera.Ref, CameraState_UILock, 0);
+                if (lockState == true) Error = EdsSendStatusCommand(MainCamera.Ref, CameraState_UILock, 0);
                 else Error = EdsSendStatusCommand(MainCamera.Ref, CameraState_UIUnLock, 0);
             });
         }
