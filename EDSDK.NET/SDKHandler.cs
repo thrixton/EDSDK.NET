@@ -428,9 +428,18 @@ namespace EDSDK.NET
         private uint SDKHandler_CameraAddedEvent(IntPtr inContext)
         {
             //Handle new camera here
-            if (CameraAdded != null) CameraAdded();
+            OnCameraAdded();
             return EDS_ERR_OK;
         }
+
+        protected void OnCameraAdded()
+        {
+            if (CameraAdded != null)
+            {
+                CameraAdded();
+            }
+        }
+
 
         /// <summary>
         /// An Objectevent fired
@@ -493,8 +502,16 @@ namespace EDSDK.NET
         private uint Camera_SDKProgressCallbackEvent(uint inPercent, IntPtr inContext, ref bool outCancel)
         {
             //Handle progress here
-            if (ProgressChanged != null) ProgressChanged((int)inPercent);
+            OnProgressChanged((int)inPercent);
             return EDS_ERR_OK;
+        }
+
+        protected void OnProgressChanged(int percent)
+        {
+            if (ProgressChanged != null)
+            {
+                ProgressChanged(percent);
+            }
         }
 
         /// <summary>
@@ -507,6 +524,9 @@ namespace EDSDK.NET
         /// <returns>An EDSDK errorcode</returns>
         private uint Camera_SDKPropertyEvent(uint inEvent, uint inPropertyID, uint inParameter, IntPtr inContext)
         {
+            var prop = GetSDKProperty(inPropertyID);
+            LogInfo("Property {0} changed to {1}", prop.Name, "0x" + inParameter.ToString("X"));
+
             //Handle property event here
             switch (inEvent)
             {
@@ -739,7 +759,7 @@ namespace EDSDK.NET
                 case StateEvent_Shutdown:
                     CameraSessionOpen = false;
                     if (LVThread.IsAlive) LVThread.Abort();
-                    if (CameraHasShutdown != null) CameraHasShutdown(this, new EventArgs());
+                    OnCameraHasShutdown();
                     break;
                 case StateEvent_ShutDownTimerUpdate:
                     break;
@@ -747,6 +767,14 @@ namespace EDSDK.NET
                     break;
             }
             return EDS_ERR_OK;
+        }
+
+        protected void OnCameraHasShutdown()
+        {
+            if (CameraHasShutdown != null)
+            {
+                CameraHasShutdown(this, new EventArgs());
+            }
         }
 
         #endregion
@@ -848,7 +876,7 @@ namespace EDSDK.NET
                     Error = EdsRelease(streamRef);
 
                     //Fire the event with the image
-                    if (ImageDownloaded != null) ImageDownloaded(bmp);
+                    OnImageDownloaded(bmp);
                 }, true);
             }
             else
@@ -856,6 +884,14 @@ namespace EDSDK.NET
                 //if it's a RAW image, cancel the download and release the image
                 SendSDKCommand(delegate { Error = EdsDownloadCancel(ObjectPointer); });
                 Error = EdsRelease(ObjectPointer);
+            }
+        }
+
+        protected void OnImageDownloaded(Bitmap bitmap)
+        {
+            if (ImageDownloaded != null)
+            {
+                ImageDownloaded(bitmap);
             }
         }
 
@@ -1171,6 +1207,7 @@ namespace EDSDK.NET
         {
             if (!IsLiveViewOn)
             {
+                LogInfo("Starting Liveview");
                 SetSetting(PropID_Evf_OutputDevice, EvfOutputDevice_PC);
                 IsLiveViewOn = true;
             }
@@ -1233,7 +1270,7 @@ namespace EDSDK.NET
                         unsafe { ums = new UnmanagedMemoryStream((byte*)jpgPointer.ToPointer(), (long)length, (long)length, FileAccess.Read); }
 
                         //fire the LiveViewUpdated event with the live view image stream
-                        if (LiveViewUpdated != null) LiveViewUpdated(ums);
+                        OnLiveViewUpdated(ums);
                         ums.Close();
                     }
 
@@ -1246,6 +1283,21 @@ namespace EDSDK.NET
             });
             LVThread.Start();
         }
+
+        /// <summary>
+        /// Fires the LiveViewUpdated event
+        /// </summary>
+        /// <param name="stream"></param>
+        protected void OnLiveViewUpdated(UnmanagedMemoryStream stream)
+        {
+            logger.LogInformation("Liveview updated");
+
+            if(LiveViewUpdated != null)
+            {
+                LiveViewUpdated(stream);
+            }
+        }
+
 
         /// <summary>
         /// Get the live view ZoomRect value
