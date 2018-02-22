@@ -1218,6 +1218,10 @@ namespace EDSDK.NET
         /// </summary>
         public void StopLiveView(bool LVoff = true)
         {
+            if (IsLiveViewOn)
+            {
+                LogInfo("Stopping liveview");
+            }
             this.LVoff = LVoff;
             IsLiveViewOn = false;
         }
@@ -1290,7 +1294,7 @@ namespace EDSDK.NET
         /// <param name="stream"></param>
         protected void OnLiveViewUpdated(UnmanagedMemoryStream stream)
         {
-            logger.LogInformation("Liveview updated");
+            // logger.LogInformation("Liveview updated");
 
             if(LiveViewUpdated != null)
             {
