@@ -10,6 +10,22 @@ namespace EDSDK.NET
     /// </summary>
     public static class STAThread
     {
+        public delegate void LogAction(string message, params object[] args);
+
+        static LogAction _logInfoAction;
+        public static void SetLogInfoAction(LogAction action)
+        {
+            _logInfoAction = action;
+        }
+
+        static void LogInfo(string message, params object[] args)
+        {
+            if(_logInfoAction != null)
+            {
+                _logInfoAction(message, args);
+            }
+        }
+
         /// <summary>
         /// The object that is used to lock the live view thread
         /// </summary>
@@ -80,8 +96,21 @@ namespace EDSDK.NET
         /// <returns>An STA thread</returns>
         public static Thread Create(Action a)
         {
+            return Create(a, "STA thread: " + Guid.NewGuid().ToString());
+        }
+
+        /// <summary>
+        /// Creates an STA thread that can safely execute SDK commands
+        /// </summary>
+        /// <param name="a">The command to run on this thread</param>
+        /// <param name="threadName">The name of this thread</param>
+        /// <returns>An STA thread</returns>
+        public static Thread Create(Action a, string threadName)
+        {
             var thread = new Thread(new ThreadStart(a));
             thread.SetApartmentState(ApartmentState.STA);
+            thread.Name = threadName;
+            LogInfo("Created STA Thread. ThreadName: {ThreadName}, ApartmentState: {ApartmentState}", thread.Name, thread.GetApartmentState());
             return thread;
         }
 
@@ -94,7 +123,10 @@ namespace EDSDK.NET
         {
             lock (runLock)
             {
-                if (!isRunning) return;
+                if (!isRunning)
+                {
+                    return;
+                }
 
                 if (IsSTAThread)
                 {
@@ -106,7 +138,13 @@ namespace EDSDK.NET
                     }
                     if (runException != null) throw runException;
                 }
-                else lock (ExecLock) { a(); }
+                else
+                {
+                    lock (ExecLock)
+                    {
+                        a();
+                    }
+                }
             }
         }
 
@@ -126,6 +164,7 @@ namespace EDSDK.NET
         {
             lock (threadLock)
             {
+                Thread cThread = Thread.CurrentThread;
                 while (true)
                 {
                     Monitor.Wait(threadLock);
@@ -138,11 +177,14 @@ namespace EDSDK.NET
                     {
                         lock (ExecLock)
                         {
+
+                            LogInfo("Executing action on ThreadName: {ThreadName}, ApartmentState: {ApartmentState}", cThread.Name, cThread.GetApartmentState());
                             runAction();
                         }
                     }
                     catch (Exception ex)
                     {
+                        LogInfo("Exception on ThreadName: {ThreadName}, ApartmentState: {ApartmentState}", cThread.Name, cThread.GetApartmentState());
                         runException = ex;
                     }
                     Monitor.Pulse(threadLock);

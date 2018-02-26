@@ -140,6 +140,18 @@ namespace EDSDK.NET
         /// </summary>
         private bool LVoff;
 
+        public void DumpAllProperties()
+        {
+            LogInfo("=========Dumping properties=========");
+
+            foreach (var prop in SDKProperties)
+            {
+                uint value = GetSetting(prop.Value);
+
+                LogInfo("Property: {SDKProperty}, Value: {SDKPropertyValue}", prop.Name, "0x" + value.ToString("X"));
+            }
+        }
+
         #endregion
 
         #region Events
@@ -280,22 +292,36 @@ namespace EDSDK.NET
         {
             this.logger = logger;
 
+
+            STAThread.SetLogInfoAction(LogInfo);
+
             PopulateSDKConstantStructures();
+
+            if (Thread.CurrentThread.GetApartmentState() != ApartmentState.STA)
+            {
+                LogWarning("SDKHandler created on a non-STA thread");
+            }
 
             //initialize SDK
             Error = EdsInitializeSDK();
             STAThread.Init();
+
             //subscribe to camera added event (the C# event and the SDK event)
             SDKCameraAddedEvent += new EdsCameraAddedHandler(SDKHandler_CameraAddedEvent);
-            EdsSetCameraAddedHandler(SDKCameraAddedEvent, IntPtr.Zero);
+            AddCameraHandler(() => { return EdsSetCameraAddedHandler(SDKCameraAddedEvent, IntPtr.Zero); }, nameof(EdsSetCameraAddedHandler));
 
             //subscribe to the camera events (for the C# events)
             SDKStateEvent += new EdsStateEventHandler(Camera_SDKStateEvent);
             SDKPropertyEvent += new EdsPropertyEventHandler(Camera_SDKPropertyEvent);
             SDKProgressCallbackEvent += new EdsProgressCallback(Camera_SDKProgressCallbackEvent);
             SDKObjectEvent += new EdsObjectEventHandler(Camera_SDKObjectEvent);
+
         }
 
+        /// <summary>
+        /// Call this once to initialize event listeners and thread management
+        /// NOTE: Should be called from an STA thread
+        /// </summary>
         private void PopulateSDKConstantStructures()
         {
             FieldInfo[] fields = typeof(EDSDKLib.EDSDK).GetFields(BindingFlags.Public | BindingFlags.Static);
@@ -339,7 +365,7 @@ namespace EDSDK.NET
                 camList.Add(new Camera(cptr));
             }
 
-            LogInfo("Found {0} cameras", camList.Count);
+            LogInfo("Found {CameraCount} cameras", camList.Count);
 
             return camList;
         }
@@ -362,9 +388,9 @@ namespace EDSDK.NET
                 //open a session
                 SendSDKCommand(delegate { Error = EdsOpenSession(MainCamera.Ref); }, sdkAction: nameof(EdsOpenSession));
                 //subscribe to the camera events (for the SDK)
-                EdsSetCameraStateEventHandler(MainCamera.Ref, StateEvent_All, SDKStateEvent, MainCamera.Ref);
-                EdsSetObjectEventHandler(MainCamera.Ref, ObjectEvent_All, SDKObjectEvent, MainCamera.Ref);
-                EdsSetPropertyEventHandler(MainCamera.Ref, PropertyEvent_All, SDKPropertyEvent, MainCamera.Ref);
+                AddCameraHandler(() => { return EdsSetCameraStateEventHandler(MainCamera.Ref, StateEvent_All, SDKStateEvent, MainCamera.Ref); }, nameof(EdsSetCameraStateEventHandler));
+                AddCameraHandler(() => { return EdsSetObjectEventHandler(MainCamera.Ref, ObjectEvent_All, SDKObjectEvent, MainCamera.Ref); }, nameof(EdsSetObjectEventHandler));
+                AddCameraHandler(() => { return EdsSetPropertyEventHandler(MainCamera.Ref, PropertyEvent_All, SDKPropertyEvent, MainCamera.Ref); }, nameof(EdsSetPropertyEventHandler));
                 CameraSessionOpen = true;
 
                 /*vvv This should be extracted out into a settings option to pass through*/
@@ -374,8 +400,18 @@ namespace EDSDK.NET
 
                 /*^^^ This should be extracted out into a settings option to pass through*/
 
+                LogInfo("Connected to Camera: {CameraName}", newCamera.Info.szDeviceDescription);
+
             }
         }
+
+        void AddCameraHandler(Func<uint> action, string handlerName)
+        {
+            LogInfo("Adding handler: {SDKHandlerName}", handlerName);
+
+            Error = action();
+        }
+
 
         /// <summary>
         /// Closes the session with the current camera
@@ -451,7 +487,7 @@ namespace EDSDK.NET
         private uint Camera_SDKObjectEvent(uint inEvent, IntPtr inRef, IntPtr inContext)
         {
             var eventProperty = SDKObjectEventToProperty(inEvent);
-            LogInfo("SDK Object Event. Name: {0}, Value: {1}", eventProperty.Name, eventProperty.ValueToString());
+            LogInfo("SDK Object Event. Name: {SDKEventName}, Value: {SDKEventHex}", eventProperty.Name, eventProperty.ValueToString());
             //handle object event here
             switch (inEvent)
             {
@@ -525,7 +561,7 @@ namespace EDSDK.NET
         private uint Camera_SDKPropertyEvent(uint inEvent, uint inPropertyID, uint inParameter, IntPtr inContext)
         {
             var prop = GetSDKProperty(inPropertyID);
-            LogInfo("Property {0} changed to {1}", prop.Name, "0x" + inParameter.ToString("X"));
+            LogInfo("Property {SDKPropertyName} changed to {SDKPropertyValue}", prop.Name, "0x" + inParameter.ToString("X"));
 
             //Handle property event here
             switch (inEvent)
@@ -739,7 +775,7 @@ namespace EDSDK.NET
 
             var stateProperty = GetStateEvent(inEvent);
 
-            LogInfo("SDK State Event. Name: {0}, Value {1}", stateProperty.Name, stateProperty.ValueToString());
+            LogInfo("SDK State Event. Name: {SDKStateEventName}, Hex {SDKStateEventHex}", stateProperty.Name, stateProperty.ValueToString());
 
             //Handle state event here
             switch (inEvent)
@@ -758,7 +794,11 @@ namespace EDSDK.NET
                     break;
                 case StateEvent_Shutdown:
                     CameraSessionOpen = false;
-                    if (LVThread.IsAlive) LVThread.Abort();
+                    if (IsLiveViewOn)
+                    {
+                        StopLiveView();
+                        // Not supported in .NET Core. Transition to cancellation token LVThread.Abort();
+                    }
                     OnCameraHasShutdown();
                     break;
                 case StateEvent_ShutDownTimerUpdate:
@@ -817,7 +857,7 @@ namespace EDSDK.NET
             }
 
 
-            LogInfo("Downloading image {0} to {1}", fileName, directory);
+            LogInfo("Downloading image {ImageFileName} to {ImageSaveDirectory}", fileName, directory);
 
             SendSDKCommand(delegate
             {
@@ -843,7 +883,7 @@ namespace EDSDK.NET
             //check the extension. Raw data cannot be read by the bitmap class
             string ext = Path.GetExtension(dirInfo.szFileName).ToLower();
 
-            LogInfo("Downloading image {0}", dirInfo.szFileName);
+            LogInfo("Downloading image {ImageFileName}", dirInfo.szFileName);
 
 
             if (ext == ".jpg" || ext == ".jpeg")
@@ -1110,21 +1150,23 @@ namespace EDSDK.NET
         /// <summary>
         /// Sets an uint value for the given property ID
         /// </summary>
-        /// <param name="PropID">The property ID</param>
-        /// <param name="Value">The value which will be set</param>
-        public void SetSetting(uint PropID, uint Value)
+        /// <param name="propertyId">The property ID</param>
+        /// <param name="value">The value which will be set</param>
+        public void SetSetting(uint propertyId, uint value)
         {
-            LogSetProperty(PropID);
+            LogSetProperty(propertyId, "0x" + value.ToString("X"));
             if (MainCamera.Ref != IntPtr.Zero)
             {
                 SendSDKCommand(delegate
                 {
+                    var cThread = Thread.CurrentThread;
+                    LogInfo("Executing SDK command. ThreadName: {ThreadName}, ApartmentState: {ApartmentState}", cThread.Name, cThread.GetApartmentState());
                     int propsize;
                     EdsDataType proptype;
                     //get size of property
-                    Error = EdsGetPropertySize(MainCamera.Ref, PropID, 0, out proptype, out propsize);
+                    Error = EdsGetPropertySize(MainCamera.Ref, propertyId, 0, out proptype, out propsize);
                     //set given property
-                    Error = EdsSetPropertyData(MainCamera.Ref, PropID, 0, propsize, Value);
+                    Error = EdsSetPropertyData(MainCamera.Ref, propertyId, 0, propsize, value);
                 }, sdkAction: nameof(EdsSetPropertyData));
             }
             else { throw new ArgumentNullException("Camera or camera reference is null/zero"); }
@@ -1149,34 +1191,34 @@ namespace EDSDK.NET
             SetStructSetting(propertyId, dateTime);
         }
 
-        void LogSetProperty(uint propertyId)
+        void LogSetProperty(uint propertyId, string value)
         {
             var prop = GetSDKProperty(propertyId);
-            LogInfo("Setting property. Name: {0}, Id: {1}", prop.Name, prop.Value);
+            LogInfo("Setting property. Name: {SDKPropertyName}, Id: {SDKPropertyHex}, Value: {SDKPropertyValue}", prop.Name, prop.Value, value);
         }
 
         /// <summary>
         /// Sets a string value for the given property ID
         /// </summary>
-        /// <param name="PropID">The property ID</param>
-        /// <param name="Value">The value which will be set</param>
-        public void SetStringSetting(uint PropID, string Value)
+        /// <param name="propertyId">The property ID</param>
+        /// <param name="value">The value which will be set</param>
+        public void SetStringSetting(uint propertyId, string value)
         {
-            LogSetProperty(PropID);
+            LogSetProperty(propertyId, value);
             //TODO: Refactor to remove duplicate code in Set_XXX_Setting methods
             if (MainCamera.Ref != IntPtr.Zero)
             {
-                if (Value == null) throw new ArgumentNullException("String must not be null");
+                if (value == null) throw new ArgumentNullException("String must not be null");
 
                 //convert string to byte array
-                byte[] propertyValueBytes = System.Text.Encoding.ASCII.GetBytes(Value + '\0');
+                byte[] propertyValueBytes = System.Text.Encoding.ASCII.GetBytes(value + '\0');
                 int propertySize = propertyValueBytes.Length;
 
                 //check size of string
                 if (propertySize > 32) throw new ArgumentOutOfRangeException("Value must be smaller than 32 bytes");
 
                 //set value
-                SendSDKCommand(delegate { Error = EdsSetPropertyData(MainCamera.Ref, PropID, 0, 32, propertyValueBytes); }, sdkAction: nameof(EdsSetPropertyData));
+                SendSDKCommand(delegate { Error = EdsSetPropertyData(MainCamera.Ref, propertyId, 0, 32, propertyValueBytes); }, sdkAction: nameof(EdsSetPropertyData));
             }
             else { throw new ArgumentNullException("Camera or camera reference is null/zero"); }
         }
@@ -1184,14 +1226,14 @@ namespace EDSDK.NET
         /// <summary>
         /// Sets a struct value for the given property ID
         /// </summary>
-        /// <param name="PropID">The property ID</param>
-        /// <param name="Value">The value which will be set</param>
-        public void SetStructSetting<T>(uint PropID, T Value) where T : struct
+        /// <param name="propertyId">The property ID</param>
+        /// <param name="value">The value which will be set</param>
+        public void SetStructSetting<T>(uint propertyId, T value) where T : struct
         {
-            LogSetProperty(PropID);
+            LogSetProperty(propertyId, value.ToString());
             if (MainCamera.Ref != IntPtr.Zero)
             {
-                SendSDKCommand(delegate { Error = EdsSetPropertyData(MainCamera.Ref, PropID, 0, Marshal.SizeOf(typeof(T)), Value); }, sdkAction: nameof(EdsSetPropertyData));
+                SendSDKCommand(delegate { Error = EdsSetPropertyData(MainCamera.Ref, propertyId, 0, Marshal.SizeOf(typeof(T)), value); }, sdkAction: nameof(EdsSetPropertyData));
             }
             else { throw new ArgumentNullException("Camera or camera reference is null/zero"); }
         }
@@ -1208,6 +1250,17 @@ namespace EDSDK.NET
             if (!IsLiveViewOn)
             {
                 LogInfo("Starting Liveview");
+
+                if (LiveViewUpdated != null)
+                {
+                    LogInfo("{LiveViewUpdatedEventListeners} LiveViewUpdated listeners found", LiveViewUpdated.GetInvocationList().Length);
+                }
+                else
+                {
+                    LogInfo("{LiveViewUpdatedEventListeners} LiveViewUpdated listeners found", 0);
+
+                }
+
                 SetSetting(PropID_Evf_OutputDevice, EvfOutputDevice_PC);
                 IsLiveViewOn = true;
             }
@@ -1275,14 +1328,24 @@ namespace EDSDK.NET
                     }
 
                     //release and finish
-                    if (stream != IntPtr.Zero) { Error = EdsRelease(stream); }
+                    if (stream != IntPtr.Zero)
+                    {
+                        Error = EdsRelease(stream);
+                    }
+                    LogInfo("Stopping LiveView");
                     //stop the live view
                     SetSetting(PropID_Evf_OutputDevice, LVoff ? 0 : EvfOutputDevice_TFT);
                 }
-                catch { IsLiveViewOn = false; }
+                catch
+                {
+                    IsLiveViewOn = false;
+                }
             });
             LVThread.Start();
         }
+
+        DateTime lastLiveViewLog = DateTime.MinValue;
+
 
         /// <summary>
         /// Fires the LiveViewUpdated event
@@ -1290,9 +1353,13 @@ namespace EDSDK.NET
         /// <param name="stream"></param>
         protected void OnLiveViewUpdated(UnmanagedMemoryStream stream)
         {
-            logger.LogInformation("Liveview updated");
+            if (lastLiveViewLog.AddSeconds(30) < DateTime.Now)
+            {
+                LogInfo("Liveview updated");
+                lastLiveViewLog = DateTime.Now;
+            }
 
-            if(LiveViewUpdated != null)
+            if (LiveViewUpdated != null)
             {
                 LiveViewUpdated(stream);
             }
@@ -1577,7 +1644,7 @@ namespace EDSDK.NET
         {
             if (sdkAction != null)
             {
-                LogInfo("Sending SDK command: {0}", sdkAction);
+                LogInfo("Sending SDK command: {SDKCommand}", sdkAction);
             }
 
 
