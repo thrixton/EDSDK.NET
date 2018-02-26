@@ -1271,6 +1271,10 @@ namespace EDSDK.NET
         /// </summary>
         public void StopLiveView(bool LVoff = true)
         {
+            if (IsLiveViewOn)
+            {
+                LogInfo("Stopping liveview");
+            }
             this.LVoff = LVoff;
             IsLiveViewOn = false;
         }
