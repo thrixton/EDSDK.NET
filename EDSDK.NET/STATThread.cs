@@ -1,7 +1,9 @@
-﻿using System;
+﻿using Microsoft.Extensions.Logging.Summarized;
+using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace EDSDK.NET
 {
@@ -10,6 +12,8 @@ namespace EDSDK.NET
     /// </summary>
     public static class STAThread
     {
+        public delegate Task ExecuteTask(Action action);
+
         public delegate void LogAction(string message, params object[] args);
 
         static LogAction _logInfoAction;
@@ -25,6 +29,10 @@ namespace EDSDK.NET
                 _logInfoAction(message, args);
             }
         }
+
+        public static ExecuteTask OverrideTaskExecutor { get; set; }
+
+
 
         /// <summary>
         /// The object that is used to lock the live view thread
@@ -42,6 +50,15 @@ namespace EDSDK.NET
         /// The main thread where everything will be executed on
         /// </summary>
         private static Thread main;
+
+        /// <summary>
+        /// alt, main task instead of thread
+        /// </summary>
+        private static Task mainTask;
+
+        private static ManualResetEvent mainTaskEndSignal = new ManualResetEvent(false);
+
+
         /// <summary>
         /// The action to be executed
         /// </summary>
@@ -66,13 +83,19 @@ namespace EDSDK.NET
         /// <summary>
         /// Starts the execution thread
         /// </summary>
-        internal static void Init()
+        internal static void Init(SummarizedLogger logger)
         {
             if (!isRunning)
             {
-                main = Create(SafeExecutionLoop);
-                isRunning = true;
-                main.Start();
+                if (OverrideTaskExecutor != null)
+                {
+                    mainTask = OverrideTaskExecutor.Invoke(new Action(()=> SafeExecutionLoop(logger)));
+                }
+                else
+                {
+                    main = Create(new Action(()=> SafeExecutionLoop(logger)));
+                    main.Start();
+                }
             }
         }
 
@@ -160,16 +183,20 @@ namespace EDSDK.NET
             return result;
         }
 
-        private static void SafeExecutionLoop()
+        private static void SafeExecutionLoop(SummarizedLogger logger)
         {
             lock (threadLock)
             {
                 Thread cThread = Thread.CurrentThread;
                 while (true)
                 {
+
+                    logger.LogEvent("SafeExecutionLoop.StartLoop");
+
                     Monitor.Wait(threadLock);
                     if (!isRunning)
                     {
+                        mainTaskEndSignal.Set();
                         return;
                     }
                     runException = null;
@@ -177,8 +204,8 @@ namespace EDSDK.NET
                     {
                         lock (ExecLock)
                         {
-
                             LogInfo("Executing action on ThreadName: {ThreadName}, ApartmentState: {ApartmentState}", cThread.Name, cThread.GetApartmentState());
+                            logger.LogEvent("SafeExecutionLoop.RunAction");
                             runAction();
                         }
                     }
@@ -190,6 +217,7 @@ namespace EDSDK.NET
                     Monitor.Pulse(threadLock);
                 }
             }
+
         }
     }
 }

@@ -12,6 +12,7 @@ using static EDSDKLib.EDSDK;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using System.Reflection;
+using Microsoft.Extensions.Logging.Summarized;
 
 namespace EDSDK.NET
 {
@@ -292,6 +293,7 @@ namespace EDSDK.NET
         {
             this.logger = logger;
 
+            onLiveViewUpdatedLogger = new SummarizedLogger(logger, LogLevel.Debug, nameof(OnLiveViewUpdated)).SetFrequency(TimeSpan.FromSeconds(10));
 
             STAThread.SetLogInfoAction(LogInfo);
 
@@ -302,9 +304,12 @@ namespace EDSDK.NET
                 LogWarning("SDKHandler created on a non-STA thread");
             }
 
+            SummarizedLogger staThreadLogger = new SummarizedLogger(logger, LogLevel.Debug, nameof(STAThread))
+                .SetFrequency(TimeSpan.FromSeconds(10));
+
             //initialize SDK
             Error = EdsInitializeSDK();
-            STAThread.Init();
+            STAThread.Init(staThreadLogger);
 
             //subscribe to camera added event (the C# event and the SDK event)
             SDKCameraAddedEvent += new EdsCameraAddedHandler(SDKHandler_CameraAddedEvent);
@@ -1277,7 +1282,15 @@ namespace EDSDK.NET
             }
             this.LVoff = LVoff;
             IsLiveViewOn = false;
+
+            //Wait 5 seconds for evf thread to finish, otherwise manually stop
+            if (!cancelLiveViewWait.WaitOne(TimeSpan.FromSeconds(5)))
+            {
+                KillLiveView();
+            }
         }
+
+        AutoResetEvent cancelLiveViewWait = new AutoResetEvent(false);
 
         /// <summary>
         /// Downloads the live view image
@@ -1336,9 +1349,8 @@ namespace EDSDK.NET
                     {
                         Error = EdsRelease(stream);
                     }
-                    LogInfo("Stopping LiveView");
-                    //stop the live view
-                    SetSetting(PropID_Evf_OutputDevice, LVoff ? 0 : EvfOutputDevice_TFT);
+                    KillLiveView();
+                    cancelLiveViewWait.Set();
                 }
                 catch
                 {
@@ -1348,7 +1360,14 @@ namespace EDSDK.NET
             LVThread.Start();
         }
 
-        DateTime lastLiveViewLog = DateTime.MinValue;
+        private void KillLiveView()
+        {
+            LogInfo("Stopping LiveView");
+            //stop the live view
+            SetSetting(PropID_Evf_OutputDevice, LVoff ? 0 : EvfOutputDevice_TFT);
+        }
+
+        SummarizedLogger onLiveViewUpdatedLogger;
 
 
         /// <summary>
@@ -1357,12 +1376,7 @@ namespace EDSDK.NET
         /// <param name="stream"></param>
         protected void OnLiveViewUpdated(UnmanagedMemoryStream stream)
         {
-            if (lastLiveViewLog.AddSeconds(30) < DateTime.Now)
-            {
-                LogInfo("Liveview updated");
-                lastLiveViewLog = DateTime.Now;
-            }
-
+            onLiveViewUpdatedLogger.LogEvent();
             if (LiveViewUpdated != null)
             {
                 LiveViewUpdated(stream);
