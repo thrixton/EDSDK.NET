@@ -1,9 +1,13 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
-VisualStudioVersion = 15.0.27130.2027
+VisualStudioVersion = 15.0.27130.2024
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EDSDK.NET", "EDSDK.NET\EDSDK.NET.csproj", "{F32F92E7-1C40-404B-9F2B-EE8E90C42B90}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "EDSDK.NET", "EDSDK.NET\EDSDK.NET.csproj", "{F32F92E7-1C40-404B-9F2B-EE8E90C42B90}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src-external", "src-external", "{E4FCF30E-22D8-490D-B98F-ED508CB8EAF7}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Microsoft.Extensions.Logging.Summarized", "..\Microsoft.Extensions.Logging.Summarized\src\Microsoft.Extensions.Logging.Summarized\Microsoft.Extensions.Logging.Summarized.csproj", "{B4AD38AF-3E5D-434D-9903-032C59DFF4AC}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,9 +19,16 @@ Global
 		{F32F92E7-1C40-404B-9F2B-EE8E90C42B90}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F32F92E7-1C40-404B-9F2B-EE8E90C42B90}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F32F92E7-1C40-404B-9F2B-EE8E90C42B90}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B4AD38AF-3E5D-434D-9903-032C59DFF4AC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B4AD38AF-3E5D-434D-9903-032C59DFF4AC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B4AD38AF-3E5D-434D-9903-032C59DFF4AC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B4AD38AF-3E5D-434D-9903-032C59DFF4AC}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{B4AD38AF-3E5D-434D-9903-032C59DFF4AC} = {E4FCF30E-22D8-490D-B98F-ED508CB8EAF7}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {4F290DE0-CF49-40BD-9302-8A89171A2FA9}

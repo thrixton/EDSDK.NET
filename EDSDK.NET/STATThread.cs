@@ -191,7 +191,7 @@ namespace EDSDK.NET
                 while (true)
                 {
 
-                    logger.LogEvent("SafeExecutionLoop.StartLoop");
+                    logger.LogEventAsync("SafeExecutionLoop.StartLoop");
 
                     Monitor.Wait(threadLock);
                     if (!isRunning)
@@ -205,7 +205,7 @@ namespace EDSDK.NET
                         lock (ExecLock)
                         {
                             LogInfo("Executing action on ThreadName: {ThreadName}, ApartmentState: {ApartmentState}", cThread.Name, cThread.GetApartmentState());
-                            logger.LogEvent("SafeExecutionLoop.RunAction");
+                            logger.LogEventAsync("SafeExecutionLoop.RunAction");
                             runAction();
                         }
                     }

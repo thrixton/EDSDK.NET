@@ -286,6 +286,8 @@ namespace EDSDK.NET
 
         public object Value { get; private set; }
 
+        SummarizedLogger summaryLogger;
+
         /// <summary>
         /// Initializes the SDK and adds events
         /// </summary>
@@ -293,7 +295,8 @@ namespace EDSDK.NET
         {
             this.logger = logger;
 
-            onLiveViewUpdatedLogger = new SummarizedLogger(logger, LogLevel.Debug, nameof(OnLiveViewUpdated)).SetFrequency(TimeSpan.FromSeconds(10));
+            summaryLogger = new SummarizedLogger(logger, LogLevel.Debug, nameof(SDKHandler))
+                .SetFrequency(TimeSpan.FromSeconds(10));
 
             STAThread.SetLogInfoAction(LogInfo);
 
@@ -304,8 +307,11 @@ namespace EDSDK.NET
                 LogWarning("SDKHandler created on a non-STA thread");
             }
 
-            SummarizedLogger staThreadLogger = new SummarizedLogger(logger, LogLevel.Debug, nameof(STAThread))
-                .SetFrequency(TimeSpan.FromSeconds(10));
+            /*SummarizedLogger staThreadLogger = new SummarizedLogger(logger, LogLevel.Debug, nameof(STAThread))
+                .SetFrequency(TimeSpan.FromSeconds(10));*/
+
+            SummarizedLogger staThreadLogger = null;
+
 
             //initialize SDK
             Error = EdsInitializeSDK();
@@ -492,7 +498,8 @@ namespace EDSDK.NET
         private uint Camera_SDKObjectEvent(uint inEvent, IntPtr inRef, IntPtr inContext)
         {
             var eventProperty = SDKObjectEventToProperty(inEvent);
-            LogInfo("SDK Object Event. Name: {SDKEventName}, Value: {SDKEventHex}", eventProperty.Name, eventProperty.ValueToString());
+            //LogInfo("SDK Object Event. Name: {SDKEventName}, Value: {SDKEventHex}", eventProperty.Name, eventProperty.ValueToString());
+            summaryLogger.LogEventAsync($"Camera_SDKObjectEvent. EventName: {eventProperty.Name}");
             //handle object event here
             switch (inEvent)
             {
@@ -566,7 +573,7 @@ namespace EDSDK.NET
         private uint Camera_SDKPropertyEvent(uint inEvent, uint inPropertyID, uint inParameter, IntPtr inContext)
         {
             var prop = GetSDKProperty(inPropertyID);
-            LogInfo("Property {SDKPropertyName} changed to {SDKPropertyValue}", prop.Name, "0x" + inParameter.ToString("X"));
+            summaryLogger.LogEventAsync($"Camera_SDKPropertyEvent. Property {prop.Name} changed to {"0x" + inParameter.ToString("X")}");
 
             //Handle property event here
             switch (inEvent)
@@ -1367,8 +1374,6 @@ namespace EDSDK.NET
             SetSetting(PropID_Evf_OutputDevice, LVoff ? 0 : EvfOutputDevice_TFT);
         }
 
-        SummarizedLogger onLiveViewUpdatedLogger;
-
 
         /// <summary>
         /// Fires the LiveViewUpdated event
@@ -1376,7 +1381,7 @@ namespace EDSDK.NET
         /// <param name="stream"></param>
         protected void OnLiveViewUpdated(UnmanagedMemoryStream stream)
         {
-            onLiveViewUpdatedLogger.LogEvent();
+            summaryLogger.LogEventAsync(nameof(OnLiveViewUpdated));
             if (LiveViewUpdated != null)
             {
                 LiveViewUpdated(stream);
