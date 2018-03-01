@@ -30,10 +30,6 @@ namespace EDSDK.NET
             }
         }
 
-        public static ExecuteTask OverrideTaskExecutor { get; set; }
-
-
-
         /// <summary>
         /// The object that is used to lock the live view thread
         /// </summary>
@@ -50,14 +46,6 @@ namespace EDSDK.NET
         /// The main thread where everything will be executed on
         /// </summary>
         private static Thread main;
-
-        /// <summary>
-        /// alt, main task instead of thread
-        /// </summary>
-        private static Task mainTask;
-
-        private static ManualResetEvent mainTaskEndSignal = new ManualResetEvent(false);
-
 
         /// <summary>
         /// The action to be executed
@@ -87,15 +75,8 @@ namespace EDSDK.NET
         {
             if (!isRunning)
             {
-                if (OverrideTaskExecutor != null)
-                {
-                    mainTask = OverrideTaskExecutor.Invoke(new Action(()=> SafeExecutionLoop(logger)));
-                }
-                else
-                {
-                    main = Create(new Action(()=> SafeExecutionLoop(logger)));
-                    main.Start();
-                }
+                main = Create(new Action(() => SafeExecutionLoop(logger)));
+                main.Start();
             }
         }
 
@@ -191,12 +172,11 @@ namespace EDSDK.NET
                 while (true)
                 {
 
-                    logger.LogEventAsync("SafeExecutionLoop.StartLoop");
+                    logger?.LogEventAsync("SafeExecutionLoop.StartLoop");
 
                     Monitor.Wait(threadLock);
                     if (!isRunning)
                     {
-                        mainTaskEndSignal.Set();
                         return;
                     }
                     runException = null;
@@ -204,8 +184,7 @@ namespace EDSDK.NET
                     {
                         lock (ExecLock)
                         {
-                            LogInfo("Executing action on ThreadName: {ThreadName}, ApartmentState: {ApartmentState}", cThread.Name, cThread.GetApartmentState());
-                            logger.LogEventAsync("SafeExecutionLoop.RunAction");
+                            logger?.LogEventAsync($"Executing action on ThreadName: {cThread.Name}, ApartmentState: {cThread.GetApartmentState()}");
                             runAction();
                         }
                     }
