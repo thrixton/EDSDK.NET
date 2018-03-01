@@ -12,6 +12,7 @@ using static EDSDKLib.EDSDK;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using System.Reflection;
+using Microsoft.Extensions.Logging.Summarized;
 
 namespace EDSDK.NET
 {
@@ -285,6 +286,8 @@ namespace EDSDK.NET
 
         public object Value { get; private set; }
 
+        SummarizedLogger summaryLogger;
+
         /// <summary>
         /// Initializes the SDK and adds events
         /// </summary>
@@ -292,6 +295,8 @@ namespace EDSDK.NET
         {
             this.logger = logger;
 
+            summaryLogger = new SummarizedLogger(logger, LogLevel.Debug, nameof(SDKHandler))
+                .SetFrequency(TimeSpan.FromSeconds(10));
 
             STAThread.SetLogInfoAction(LogInfo);
 
@@ -487,7 +492,8 @@ namespace EDSDK.NET
         private uint Camera_SDKObjectEvent(uint inEvent, IntPtr inRef, IntPtr inContext)
         {
             var eventProperty = SDKObjectEventToProperty(inEvent);
-            LogInfo("SDK Object Event. Name: {SDKEventName}, Value: {SDKEventHex}", eventProperty.Name, eventProperty.ValueToString());
+            //LogInfo("SDK Object Event. Name: {SDKEventName}, Value: {SDKEventHex}", eventProperty.Name, eventProperty.ValueToString());
+            summaryLogger.LogEventAsync($"Camera_SDKObjectEvent. EventName: {eventProperty.Name}");
             //handle object event here
             switch (inEvent)
             {
@@ -561,7 +567,7 @@ namespace EDSDK.NET
         private uint Camera_SDKPropertyEvent(uint inEvent, uint inPropertyID, uint inParameter, IntPtr inContext)
         {
             var prop = GetSDKProperty(inPropertyID);
-            LogInfo("Property {SDKPropertyName} changed to {SDKPropertyValue}", prop.Name, "0x" + inParameter.ToString("X"));
+            summaryLogger.LogEventAsync($"Camera_SDKPropertyEvent. Property {prop.Name} changed to {"0x" + inParameter.ToString("X")}");
 
             //Handle property event here
             switch (inEvent)

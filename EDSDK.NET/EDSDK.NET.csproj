@@ -19,6 +19,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\Microsoft.Extensions.Logging.Summarized\src\Microsoft.Extensions.Logging.Summarized\Microsoft.Extensions.Logging.Summarized.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Update="Resources\EDSDK.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
