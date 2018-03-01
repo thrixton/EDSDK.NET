@@ -1,9 +1,7 @@
-﻿using Microsoft.Extensions.Logging.Summarized;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace EDSDK.NET
 {
@@ -12,8 +10,6 @@ namespace EDSDK.NET
     /// </summary>
     public static class STAThread
     {
-        public delegate Task ExecuteTask(Action action);
-
         public delegate void LogAction(string message, params object[] args);
 
         static LogAction _logInfoAction;
@@ -46,7 +42,6 @@ namespace EDSDK.NET
         /// The main thread where everything will be executed on
         /// </summary>
         private static Thread main;
-
         /// <summary>
         /// The action to be executed
         /// </summary>
@@ -71,11 +66,12 @@ namespace EDSDK.NET
         /// <summary>
         /// Starts the execution thread
         /// </summary>
-        internal static void Init(SummarizedLogger logger)
+        internal static void Init()
         {
             if (!isRunning)
             {
-                main = Create(new Action(() => SafeExecutionLoop(logger)));
+                main = Create(SafeExecutionLoop);
+                isRunning = true;
                 main.Start();
             }
         }
@@ -164,16 +160,13 @@ namespace EDSDK.NET
             return result;
         }
 
-        private static void SafeExecutionLoop(SummarizedLogger logger)
+        private static void SafeExecutionLoop()
         {
             lock (threadLock)
             {
                 Thread cThread = Thread.CurrentThread;
                 while (true)
                 {
-
-                    logger?.LogEventAsync("SafeExecutionLoop.StartLoop");
-
                     Monitor.Wait(threadLock);
                     if (!isRunning)
                     {
@@ -184,7 +177,8 @@ namespace EDSDK.NET
                     {
                         lock (ExecLock)
                         {
-                            logger?.LogEventAsync($"Executing action on ThreadName: {cThread.Name}, ApartmentState: {cThread.GetApartmentState()}");
+
+                            LogInfo("Executing action on ThreadName: {ThreadName}, ApartmentState: {ApartmentState}", cThread.Name, cThread.GetApartmentState());
                             runAction();
                         }
                     }
@@ -196,7 +190,6 @@ namespace EDSDK.NET
                     Monitor.Pulse(threadLock);
                 }
             }
-
         }
     }
 }

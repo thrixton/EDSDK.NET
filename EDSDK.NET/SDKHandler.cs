@@ -307,15 +307,9 @@ namespace EDSDK.NET
                 LogWarning("SDKHandler created on a non-STA thread");
             }
 
-            /*SummarizedLogger staThreadLogger = new SummarizedLogger(logger, LogLevel.Debug, nameof(STAThread))
-                .SetFrequency(TimeSpan.FromSeconds(10));*/
-
-            SummarizedLogger staThreadLogger = null;
-
-
             //initialize SDK
             Error = EdsInitializeSDK();
-            STAThread.Init(staThreadLogger);
+            STAThread.Init();
 
             //subscribe to camera added event (the C# event and the SDK event)
             SDKCameraAddedEvent += new EdsCameraAddedHandler(SDKHandler_CameraAddedEvent);
