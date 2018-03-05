@@ -9,7 +9,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Folder Include="PInvoke\" />
     <Folder Include="Resources\" />
   </ItemGroup>
 

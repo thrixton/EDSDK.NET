@@ -1,9 +1,8 @@
-﻿using Microsoft.Extensions.Logging.Summarized;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace EDSDK.NET
 {
@@ -12,22 +11,11 @@ namespace EDSDK.NET
     /// </summary>
     public static class STAThread
     {
-        public delegate Task ExecuteTask(Action action);
+        static ILogger logger;
 
-        public delegate void LogAction(string message, params object[] args);
-
-        static LogAction _logInfoAction;
-        public static void SetLogInfoAction(LogAction action)
+        public static void SetLogAction(ILogger logger)
         {
-            _logInfoAction = action;
-        }
-
-        static void LogInfo(string message, params object[] args)
-        {
-            if(_logInfoAction != null)
-            {
-                _logInfoAction(message, args);
-            }
+            STAThread.logger = logger;
         }
 
         /// <summary>
@@ -46,7 +34,6 @@ namespace EDSDK.NET
         /// The main thread where everything will be executed on
         /// </summary>
         private static Thread main;
-
         /// <summary>
         /// The action to be executed
         /// </summary>
@@ -71,11 +58,12 @@ namespace EDSDK.NET
         /// <summary>
         /// Starts the execution thread
         /// </summary>
-        internal static void Init(SummarizedLogger logger)
+        internal static void Init()
         {
             if (!isRunning)
             {
-                main = Create(new Action(() => SafeExecutionLoop(logger)));
+                main = Create(SafeExecutionLoop);
+                isRunning = true;
                 main.Start();
             }
         }
@@ -88,8 +76,28 @@ namespace EDSDK.NET
             if (isRunning)
             {
                 isRunning = false;
-                lock (threadLock) { Monitor.Pulse(threadLock); }
-                main.Join();
+                bool locked = false;
+
+                try
+                {
+                    Monitor.TryEnter(threadLock, TimeSpan.FromSeconds(30), ref locked);
+                    if (locked)
+                    {
+                        Monitor.Pulse(threadLock);
+                    }
+                    else
+                    {
+                        logger?.LogError("Lock request timeout expired. LockObject: {LockObject}", nameof(threadLock));
+                    }
+                }
+                finally
+                {
+                    if (locked)
+                    {
+                        Monitor.Exit(threadLock);
+                    }
+                }
+                main.Join(TimeSpan.FromSeconds(30));
             }
         }
 
@@ -114,8 +122,33 @@ namespace EDSDK.NET
             var thread = new Thread(new ThreadStart(a));
             thread.SetApartmentState(ApartmentState.STA);
             thread.Name = threadName;
-            LogInfo("Created STA Thread. ThreadName: {ThreadName}, ApartmentState: {ApartmentState}", thread.Name, thread.GetApartmentState());
+            logger.LogInformation("Created STA Thread. ThreadName: {ThreadName}, ApartmentState: {ApartmentState}", thread.Name, thread.GetApartmentState());
             return thread;
+        }
+
+        public static void TryLockAndExecute(object lockObject, string lockObjectName, TimeSpan timeout, Action action)
+        {
+            bool locked = false;
+
+            try
+            {
+                Monitor.TryEnter(lockObject, timeout, ref locked);
+                if (locked)
+                {
+                    action();
+                }
+                else
+                {
+                    logger?.LogError("Lock request timeout expired. LockObject: {LockObject}", lockObjectName);
+                }
+            }
+            finally
+            {
+                if (locked)
+                {
+                    Monitor.Exit(lockObject);
+                }
+            }
         }
 
 
@@ -125,8 +158,9 @@ namespace EDSDK.NET
         /// <param name="a">The SDK command</param>
         public static void ExecuteSafely(Action a)
         {
-            lock (runLock)
+            TryLockAndExecute(runLock, nameof(runLock), TimeSpan.FromSeconds(30), () =>
             {
+
                 if (!isRunning)
                 {
                     return;
@@ -135,21 +169,21 @@ namespace EDSDK.NET
                 if (IsSTAThread)
                 {
                     runAction = a;
-                    lock (threadLock)
+                    TryLockAndExecute(threadLock, nameof(threadLock), TimeSpan.FromSeconds(30), () =>
                     {
                         Monitor.Pulse(threadLock);
                         Monitor.Wait(threadLock);
-                    }
+                    });
                     if (runException != null) throw runException;
                 }
                 else
                 {
-                    lock (ExecLock)
+                    TryLockAndExecute(ExecLock, nameof(ExecLock), TimeSpan.FromSeconds(30), () =>
                     {
                         a();
-                    }
+                    });
                 }
-            }
+            });
         }
 
         /// <summary>
@@ -164,16 +198,13 @@ namespace EDSDK.NET
             return result;
         }
 
-        private static void SafeExecutionLoop(SummarizedLogger logger)
+        private static void SafeExecutionLoop()
         {
-            lock (threadLock)
+            TryLockAndExecute(threadLock, nameof(threadLock), TimeSpan.FromSeconds(30), () => 
             {
                 Thread cThread = Thread.CurrentThread;
                 while (true)
                 {
-
-                    logger?.LogEventAsync("SafeExecutionLoop.StartLoop");
-
                     Monitor.Wait(threadLock);
                     if (!isRunning)
                     {
@@ -182,21 +213,21 @@ namespace EDSDK.NET
                     runException = null;
                     try
                     {
-                        lock (ExecLock)
+                        TryLockAndExecute(ExecLock, nameof(ExecLock), TimeSpan.FromSeconds(30), () =>
                         {
-                            logger?.LogEventAsync($"Executing action on ThreadName: {cThread.Name}, ApartmentState: {cThread.GetApartmentState()}");
+
+                            logger.LogInformation("Executing action on ThreadName: {ThreadName}, ApartmentState: {ApartmentState}", cThread.Name, cThread.GetApartmentState());
                             runAction();
-                        }
+                        });
                     }
                     catch (Exception ex)
                     {
-                        LogInfo("Exception on ThreadName: {ThreadName}, ApartmentState: {ApartmentState}", cThread.Name, cThread.GetApartmentState());
+                        logger.LogInformation("Exception on ThreadName: {ThreadName}, ApartmentState: {ApartmentState}", cThread.Name, cThread.GetApartmentState());
                         runException = ex;
                     }
                     Monitor.Pulse(threadLock);
                 }
-            }
-
+            });
         }
     }
 }

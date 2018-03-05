@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using System.Reflection;
 using Microsoft.Extensions.Logging.Summarized;
+using System.Diagnostics;
 
 namespace EDSDK.NET
 {
@@ -96,6 +97,7 @@ namespace EDSDK.NET
         /// For video recording, SaveTo has to be set to Camera. This is to store the previous setting until after the filming.
         /// </summary>
         private uint PrevSaveTo;
+        private uint PrevEVFSetting;
 
         public void SetUintSetting(string propertyName, string propertyValue)
         {
@@ -106,13 +108,13 @@ namespace EDSDK.NET
                 propertyValue = propertyValue.Replace("0x", "");
             }
 
-            if(!uint.TryParse(propertyValue, NumberStyles.HexNumber, CultureInfo.CurrentCulture, out value))
+            if (!uint.TryParse(propertyValue, NumberStyles.HexNumber, CultureInfo.CurrentCulture, out value))
             {
                 LogError("Could not convert value {0} to uint", propertyValue);
                 error = true;
             }
 
-            if(!string.IsNullOrEmpty(propertyName) && propertyName.StartsWith("kEds"))
+            if (!string.IsNullOrEmpty(propertyName) && propertyName.StartsWith("kEds"))
             {
                 propertyName = propertyName.Substring(4);
             }
@@ -143,13 +145,13 @@ namespace EDSDK.NET
 
         public void DumpAllProperties()
         {
-            LogInfo("=========Dumping properties=========");
+            var t = LogInfoAsync("=========Dumping properties=========");
 
             foreach (var prop in SDKProperties)
             {
                 uint value = GetSetting(prop.Value);
 
-                LogInfo("Property: {SDKProperty}, Value: {SDKPropertyValue}", prop.Name, "0x" + value.ToString("X"));
+                t = LogInfoAsync("Property: {SDKProperty}, Value: {SDKPropertyValue}", prop.Name, "0x" + value.ToString("X"));
             }
         }
 
@@ -291,14 +293,14 @@ namespace EDSDK.NET
         /// <summary>
         /// Initializes the SDK and adds events
         /// </summary>
-        public SDKHandler(ILogger<SDKHandler> logger)
+        public SDKHandler(ILoggerFactory loggerFactory)
         {
-            this.logger = logger;
+            this.logger = loggerFactory.CreateLogger<SDKHandler>();
+
+            STAThread.SetLogAction(loggerFactory.CreateLogger(nameof(STAThread)));
 
             summaryLogger = new SummarizedLogger(logger, LogLevel.Debug, nameof(SDKHandler))
                 .SetFrequency(TimeSpan.FromSeconds(10));
-
-            STAThread.SetLogInfoAction(LogInfo);
 
             PopulateSDKConstantStructures();
 
@@ -307,15 +309,9 @@ namespace EDSDK.NET
                 LogWarning("SDKHandler created on a non-STA thread");
             }
 
-            /*SummarizedLogger staThreadLogger = new SummarizedLogger(logger, LogLevel.Debug, nameof(STAThread))
-                .SetFrequency(TimeSpan.FromSeconds(10));*/
-
-            SummarizedLogger staThreadLogger = null;
-
-
             //initialize SDK
             Error = EdsInitializeSDK();
-            STAThread.Init(staThreadLogger);
+            STAThread.Init();
 
             //subscribe to camera added event (the C# event and the SDK event)
             SDKCameraAddedEvent += new EdsCameraAddedHandler(SDKHandler_CameraAddedEvent);
@@ -376,14 +372,14 @@ namespace EDSDK.NET
                 camList.Add(new Camera(cptr));
             }
 
-            LogInfo("Found {CameraCount} cameras", camList.Count);
+            var t = LogInfoAsync("Found {CameraCount} cameras", camList.Count);
 
             return camList;
         }
 
-        private void LogInfo(string message, params object[] args)
+        private async Task LogInfoAsync(string message, params object[] args)
         {
-            Log(LogLevel.Information, message, args);
+            await Log(LogLevel.Information, message, args);
         }
 
         /// <summary>
@@ -411,14 +407,14 @@ namespace EDSDK.NET
 
                 /*^^^ This should be extracted out into a settings option to pass through*/
 
-                LogInfo("Connected to Camera: {CameraName}", newCamera.Info.szDeviceDescription);
+                var t = LogInfoAsync("Connected to Camera: {CameraName}", newCamera.Info.szDeviceDescription);
 
             }
         }
 
         void AddCameraHandler(Func<uint> action, string handlerName)
         {
-            LogInfo("Adding handler: {SDKHandlerName}", handlerName);
+            var t = LogInfoAsync("Adding handler: {SDKHandlerName}", handlerName);
 
             Error = action();
         }
@@ -499,7 +495,7 @@ namespace EDSDK.NET
         {
             var eventProperty = SDKObjectEventToProperty(inEvent);
             //LogInfo("SDK Object Event. Name: {SDKEventName}, Value: {SDKEventHex}", eventProperty.Name, eventProperty.ValueToString());
-            summaryLogger.LogEventAsync($"Camera_SDKObjectEvent. EventName: {eventProperty.Name}");
+            var t = summaryLogger.LogEventAsync($"Camera_SDKObjectEvent. EventName: {eventProperty.Name}");
             //handle object event here
             switch (inEvent)
             {
@@ -512,7 +508,7 @@ namespace EDSDK.NET
                 case ObjectEvent_DirItemCreated:
                     if (DownloadVideo)
                     {
-                        DownloadImage(inRef, ImageSaveDirectory, ImageSaveFileName);
+                        DownloadImage(inRef, ImageSaveDirectory, ImageSaveFileName, isVideo: true);
                         DownloadVideo = false;
                     }
                     break;
@@ -565,23 +561,22 @@ namespace EDSDK.NET
         /// <summary>
         /// A property changed
         /// </summary>
-        /// <param name="inEvent">The PropetyEvent ID</param>
+        /// <param name="inEvent">The PropertyEvent ID</param>
         /// <param name="inPropertyID">The Property ID</param>
         /// <param name="inParameter">Event Parameter</param>
         /// <param name="inContext">...</param>
         /// <returns>An EDSDK errorcode</returns>
         private uint Camera_SDKPropertyEvent(uint inEvent, uint inPropertyID, uint inParameter, IntPtr inContext)
         {
-            var prop = GetSDKProperty(inPropertyID);
-            summaryLogger.LogEventAsync($"Camera_SDKPropertyEvent. Property {prop.Name} changed to {"0x" + inParameter.ToString("X")}");
-
             //Handle property event here
             switch (inEvent)
             {
                 case PropertyEvent_All:
                     break;
                 case PropertyEvent_PropertyChanged:
+                    LogPropertyValue(inPropertyID, GetSetting(inPropertyID));
                     break;
+
                 case PropertyEvent_PropertyDescChanged:
                     break;
             }
@@ -775,6 +770,19 @@ namespace EDSDK.NET
             return EDS_ERR_OK;
         }
 
+        public void LogPropertyValue(string propertyName, uint propertyValue)
+        {
+            var task = LogInfoAsync($"Camera_SDKPropertyEvent. Property {propertyName} changed to {"0x" + propertyValue.ToString("X")}");
+        }
+
+
+        public void LogPropertyValue(uint propertyID, uint propertyValue)
+        {
+            var prop = GetSDKProperty(propertyID);
+            LogPropertyValue(prop.Name, propertyValue);
+            //do nothing with task, continue
+        }
+
         /// <summary>
         /// The camera state changed
         /// </summary>
@@ -787,7 +795,7 @@ namespace EDSDK.NET
 
             var stateProperty = GetStateEvent(inEvent);
 
-            LogInfo("SDK State Event. Name: {SDKStateEventName}, Hex {SDKStateEventHex}", stateProperty.Name, stateProperty.ValueToString());
+            var t = LogInfoAsync("SDK State Event. Name: {SDKStateEventName}, Hex {SDKStateEventHex}", stateProperty.Name, stateProperty.ValueToString());
 
             //Handle state event here
             switch (inEvent)
@@ -840,7 +848,7 @@ namespace EDSDK.NET
         /// </summary>
         /// <param name="ObjectPointer">Pointer to the object. Get it from the SDKObjectEvent.</param>
         /// <param name="directory">Path to where the image will be saved to</param>
-        public void DownloadImage(IntPtr ObjectPointer, string directory, string fileName)
+        public void DownloadImage(IntPtr ObjectPointer, string directory, string fileName, bool isVideo = false)
         {
             EdsDirectoryItemInfo dirInfo;
             IntPtr streamRef;
@@ -865,21 +873,46 @@ namespace EDSDK.NET
             string targetImage = Path.Combine(directory, fileName);
             if (File.Exists(targetImage))
             {
+                throw new NotImplementedException();
+            }
 
+            if (!Directory.Exists(directory))
+            {
+                Directory.CreateDirectory(directory);
             }
 
 
-            LogInfo("Downloading image {ImageFileName} to {ImageSaveDirectory}", fileName, directory);
+            var t = LogInfoAsync("Downloading image {ImageFileName} to {ImageSaveDirectory}", fileName, directory);
 
             SendSDKCommand(delegate
             {
+                var stopWatch = Stopwatch.StartNew();
+
                 //create filestream to data
                 Error = EdsCreateFileStream(targetImage, EdsFileCreateDisposition.CreateAlways, EdsAccess.ReadWrite, out streamRef);
                 //download file
-                lock (STAThread.ExecLock) { DownloadData(ObjectPointer, streamRef); }
+                STAThread.TryLockAndExecute(STAThread.ExecLock, nameof(STAThread.ExecLock), TimeSpan.FromSeconds(30), () =>
+                {
+                    DownloadData(ObjectPointer, streamRef);
+                });
                 //release stream
                 Error = EdsRelease(streamRef);
+                if (isVideo)
+                {
+                    videoDownloadDone?.SetResult(targetImage);
+                }
+
+                stopWatch.Stop();
+
+                var downloadFile = new FileInfo(targetImage);
+                var mB = downloadFile.Length / 1000.0 / 1000;
+
+                t = LogInfoAsync("Downloaded file. FileName: {DownloadFileName}, FileLengthMB: {FileLengthMB}, DurationSeconds: {DurationSeconds}, MBPerSecond: {MBPerSecond}", targetImage, mB.ToString("0.0"), stopWatch.Elapsed.TotalSeconds.ToString("0.0"), (mB / stopWatch.Elapsed.TotalSeconds).ToString("0.0"));
+
+
+
             }, true);
+
         }
 
         /// <summary>
@@ -895,7 +928,7 @@ namespace EDSDK.NET
             //check the extension. Raw data cannot be read by the bitmap class
             string ext = Path.GetExtension(dirInfo.szFileName).ToLower();
 
-            LogInfo("Downloading image {ImageFileName}", dirInfo.szFileName);
+            var t = LogInfoAsync("Downloading image {ImageFileName}", dirInfo.szFileName);
 
 
             if (ext == ".jpg" || ext == ".jpeg")
@@ -1172,7 +1205,7 @@ namespace EDSDK.NET
                 SendSDKCommand(delegate
                 {
                     var cThread = Thread.CurrentThread;
-                    LogInfo("Executing SDK command. ThreadName: {ThreadName}, ApartmentState: {ApartmentState}", cThread.Name, cThread.GetApartmentState());
+                    var t = LogInfoAsync("Executing SDK command. ThreadName: {ThreadName}, ApartmentState: {ApartmentState}", cThread.Name, cThread.GetApartmentState());
                     int propsize;
                     EdsDataType proptype;
                     //get size of property
@@ -1206,7 +1239,7 @@ namespace EDSDK.NET
         void LogSetProperty(uint propertyId, string value)
         {
             var prop = GetSDKProperty(propertyId);
-            LogInfo("Setting property. Name: {SDKPropertyName}, Id: {SDKPropertyHex}, Value: {SDKPropertyValue}", prop.Name, prop.Value, value);
+            var t = LogInfoAsync("Setting property. Name: {SDKPropertyName}, Id: {SDKPropertyHex}, Value: {SDKPropertyValue}", prop.Name, prop.Value, value);
         }
 
         /// <summary>
@@ -1261,15 +1294,15 @@ namespace EDSDK.NET
         {
             if (!IsLiveViewOn)
             {
-                LogInfo("Starting Liveview");
+                var t = LogInfoAsync("Starting Liveview");
 
                 if (LiveViewUpdated != null)
                 {
-                    LogInfo("{LiveViewUpdatedEventListeners} LiveViewUpdated listeners found", LiveViewUpdated.GetInvocationList().Length);
+                    t = LogInfoAsync("{LiveViewUpdatedEventListeners} LiveViewUpdated listeners found", LiveViewUpdated.GetInvocationList().Length);
                 }
                 else
                 {
-                    LogInfo("{LiveViewUpdatedEventListeners} LiveViewUpdated listeners found", 0);
+                    t = LogInfoAsync("{LiveViewUpdatedEventListeners} LiveViewUpdated listeners found", 0);
 
                 }
 
@@ -1285,7 +1318,7 @@ namespace EDSDK.NET
         {
             if (IsLiveViewOn)
             {
-                LogInfo("Stopping liveview");
+                var t = LogInfoAsync("Stopping liveview");
             }
             this.LVoff = LVoff;
             IsLiveViewOn = false;
@@ -1369,7 +1402,7 @@ namespace EDSDK.NET
 
         private void KillLiveView()
         {
-            LogInfo("Stopping LiveView");
+            var t = LogInfoAsync("Killing LiveView");
             //stop the live view
             SetSetting(PropID_Evf_OutputDevice, LVoff ? 0 : EvfOutputDevice_TFT);
         }
@@ -1381,7 +1414,7 @@ namespace EDSDK.NET
         /// <param name="stream"></param>
         protected void OnLiveViewUpdated(UnmanagedMemoryStream stream)
         {
-            summaryLogger.LogEventAsync(nameof(OnLiveViewUpdated));
+            var t = summaryLogger.LogEventAsync(nameof(OnLiveViewUpdated));
             if (LiveViewUpdated != null)
             {
                 LiveViewUpdated(stream);
@@ -1458,15 +1491,38 @@ namespace EDSDK.NET
 
         /// <summary>
         /// Starts recording a video
+        /// NOTE: Will throw an ArgumentException if the camera is not in the correct mode
         /// </summary>
         public void StartFilming()
         {
             if (!IsFilming)
             {
-                //Check if the camera is ready to film
-                if (GetSetting(PropID_Record) != 3) throw new InvalidOperationException("Camera is not in film mode");
+                //Snapshot setting for restoration after filming completes
+                PrevEVFSetting = GetSetting(PropID_Evf_OutputDevice);
+                //Set EVF output to TFT to enable film, otherwise
+                SetSetting(PropID_Evf_OutputDevice, EvfOutputDevice_TFT);
 
+                //LogPropertyValue(nameof(PropID_Record), GetSetting(PropID_Record));
+
+                //SetSetting(PropID_Evf_OutputDevice, 3);
+
+                //Check if the camera is ready to film
+                if (GetSetting(PropID_Record) != (uint)PropID_Record_Status.Movie_shooting_ready)
+                {
+                    var x = LogInfoAsync("Invalid setting, exit...");
+                    return;
+                    //DOES NOT WORK, readonly setting?
+                    //DOES NOT THROW AN ERROR
+                    //SetSetting(PropID_Record, (uint)EdsDriveMode.Video);
+                    //SetSetting(PropID_Record, (uint)PropID_Record_Status.Movie_shooting_ready);
+
+
+                    LogPropertyValue(PropID_Record, GetSetting(PropID_Record));
+                    var tx = Log(LogLevel.Critical, "Camera physical switch must be in movie record mode. Leave in this mode permanently!");
+                    throw new ArgumentException("Camera in invalid mode", nameof(PropID_Record));
+                }
                 IsFilming = true;
+
 
                 //to restore the current setting after recording
                 PrevSaveTo = GetSetting(PropID_SaveTo);
@@ -1474,28 +1530,40 @@ namespace EDSDK.NET
                 SetSetting(PropID_SaveTo, (uint)EdsSaveTo.Camera);
                 this.DownloadVideo = false;
                 //start the video recording
-                SendSDKCommand(delegate { Error = EdsSetPropertyData(MainCamera.Ref, PropID_Record, 0, 4, 4); });
+
+                var t = LogInfoAsync("Start filming");
+
+                SendSDKCommand(delegate { Error = EdsSetPropertyData(MainCamera.Ref, PropID_Record, 0, sizeof(PropID_Record_Status), (uint)PropID_Record_Status.Begin_movie_shooting); });
             }
         }
+
+        TaskCompletionSource<string> videoDownloadDone = new TaskCompletionSource<string>();
 
         /// <summary>
         /// Stops recording a video
         /// </summary>
-        public void StopFilming()
+        public TaskCompletionSource<string> StopFilming()
         {
             if (IsFilming)
             {
                 SendSDKCommand(delegate
                 {
-                    //Shut off live view (it will hang otherwise)
-                    StopLiveView(false);
-                    //stop video recording
-                    Error = EdsSetPropertyData(MainCamera.Ref, PropID_Record, 0, 4, 0);
-                });
-                //set back to previous state
+                        //Shut off live view (it will hang otherwise)
+                        //StopLiveView(false);
+                        //stop video recording
+                        Error = EdsSetPropertyData(MainCamera.Ref, PropID_Record, 0, sizeof(PropID_Record_Status), (uint)PropID_Record_Status.End_movie_shooting);
+                        //set back to previous state
+                    });
                 SetSetting(PropID_SaveTo, PrevSaveTo);
+                SetSetting(PropID_Evf_OutputDevice, PrevEVFSetting);
                 IsFilming = false;
+
             }
+            else
+            {
+                videoDownloadDone.SetResult(null);
+            }
+            return videoDownloadDone;
         }
 
         #endregion
@@ -1517,7 +1585,6 @@ namespace EDSDK.NET
         }
 
         private TaskCompletionSource<FileInfo> takePhotoCompletionSource = new TaskCompletionSource<FileInfo>();
-
 
         /// <summary>
         /// Takes a photo and returns the file info
@@ -1546,51 +1613,54 @@ namespace EDSDK.NET
 
         }
 
-        private void Log(LogLevel level, string message, params object[] args)
+        private async Task Log(LogLevel level, string message, params object[] args)
         {
-            if (logger != null)
+            await Task.Run(() =>
             {
-                switch (level)
+
+                if (logger != null)
                 {
-                    case LogLevel.Trace:
-                        logger.LogTrace(message, args);
-                        break;
+                    switch (level)
+                    {
+                        case LogLevel.Trace:
+                            logger.LogTrace(message, args);
+                            break;
 
-                    case LogLevel.Debug:
-                        logger.LogDebug(message, args);
-                        break;
+                        case LogLevel.Debug:
+                            logger.LogDebug(message, args);
+                            break;
 
-                    case LogLevel.Information:
-                        logger.LogInformation(message, args);
-                        break;
+                        case LogLevel.Information:
+                            logger.LogInformation(message, args);
+                            break;
 
-                    case LogLevel.Warning:
-                        logger.LogWarning(message, args);
-                        break;
+                        case LogLevel.Warning:
+                            logger.LogWarning(message, args);
+                            break;
 
-                    case LogLevel.Critical:
-                        logger.LogCritical(message, args);
-                        break;
+                        case LogLevel.Critical:
+                            logger.LogCritical(message, args);
+                            break;
 
-                    case LogLevel.None:
-                        // breakpoint only
-                        break;
+                        case LogLevel.None:
+                            // breakpoint only
+                            break;
 
-                    case LogLevel.Error:
-                        logger.LogError(message, args);
-                        break;
+                        case LogLevel.Error:
+                            logger.LogError(message, args);
+                            break;
 
-                    default:
-                        logger.LogError("Unknown level: {0}{1}Message: {2}", level, Environment.NewLine, string.Format(message, args));
-                        break;
+                        default:
+                            logger.LogError("Unknown level: {0}{1}Message: {2}", level, Environment.NewLine, string.Format(message, args));
+                            break;
+                    }
                 }
-            }
 
-            if (level >= LogLevel.Error)
-            {
-                // throw new Exception(string.Format(message, args));
-            }
-
+                if (level >= LogLevel.Error)
+                {
+                    // throw new Exception(string.Format(message, args));
+                }
+            });
         }
 
         private void HandleException(Exception ex, string message, params object[] args)
@@ -1603,12 +1673,12 @@ namespace EDSDK.NET
 
         private void LogWarning(string message, params object[] args)
         {
-            Log(LogLevel.Warning, message, args);
+            var t = Log(LogLevel.Warning, message, args);
         }
 
         private void LogError(string message, params object[] args)
         {
-            Log(LogLevel.Error, message, args);
+            var t = Log(LogLevel.Error, message, args);
         }
 
         void SetSaveToHost()
@@ -1667,7 +1737,7 @@ namespace EDSDK.NET
         {
             if (sdkAction != null)
             {
-                LogInfo("Sending SDK command: {SDKCommand}", sdkAction);
+                var t = LogInfoAsync("Sending SDK command: {SDKCommand}", sdkAction);
             }
 
 
