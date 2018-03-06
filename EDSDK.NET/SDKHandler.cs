@@ -1305,8 +1305,16 @@ namespace EDSDK.NET
 
                 }
 
+
+                LogPropertyValue(nameof(PropID_Evf_OutputDevice), GetSetting(PropID_Evf_OutputDevice));
+
+
+
                 SetSetting(PropID_Evf_OutputDevice, EvfOutputDevice_PC);
                 IsLiveViewOn = true;
+
+                LogPropertyValue(nameof(PropID_Evf_OutputDevice), GetSetting(PropID_Evf_OutputDevice));
+
             }
         }
 
