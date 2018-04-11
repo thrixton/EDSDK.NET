@@ -316,7 +316,18 @@ namespace EDSDK.NET
             }
 
             //initialize SDK
-            Error = EdsInitializeSDK();
+
+            try
+            {
+                Error = EdsInitializeSDK();
+
+            }
+            catch (Exception x)
+            {
+                logger.LogError(x, "Error initialising SDK");
+                throw new Exception("Error initialising SDK", x);
+                //TODO: Move to Initialise pattern instead of constructor
+            }
             STAThread.Init();
 
             //subscribe to camera added event (the C# event and the SDK event)
