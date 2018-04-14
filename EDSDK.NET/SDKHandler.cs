@@ -97,6 +97,7 @@ namespace EDSDK.NET
         /// For video recording, SaveTo has to be set to Camera. This is to store the previous setting until after the filming.
         /// </summary>
         private uint PrevSaveTo;
+        EdsCapacity PrevCapacity;
         private uint PrevEVFSetting;
 
         public void SetUintSetting(string propertyName, string propertyValue)
@@ -252,6 +253,11 @@ namespace EDSDK.NET
             return search;
         }
 
+        public void SetSaveToHost()
+        {
+            SetSetting(EDSDKLib.EDSDK.PropID_SaveTo, (uint)EDSDKLib.EDSDK.EdsSaveTo.Host);
+        }
+
         public SDKProperty GetStateEvent(uint stateEvent)
         {
             return FindProperty(SDKStateEvents, stateEvent);
@@ -311,7 +317,18 @@ namespace EDSDK.NET
             }
 
             //initialize SDK
-            Error = EdsInitializeSDK();
+
+            try
+            {
+                Error = EdsInitializeSDK();
+
+            }
+            catch (Exception x)
+            {
+                logger.LogError(x, "Error initialising SDK");
+                throw new Exception("Error initialising SDK", x);
+                //TODO: Move to Initialise pattern instead of constructor
+            }
             STAThread.Init();
 
             //subscribe to camera added event (the C# event and the SDK event)
@@ -398,14 +415,7 @@ namespace EDSDK.NET
                 AddCameraHandler(() => { return EdsSetCameraStateEventHandler(MainCamera.Ref, StateEvent_All, SDKStateEvent, MainCamera.Ref); }, nameof(EdsSetCameraStateEventHandler));
                 AddCameraHandler(() => { return EdsSetObjectEventHandler(MainCamera.Ref, ObjectEvent_All, SDKObjectEvent, MainCamera.Ref); }, nameof(EdsSetObjectEventHandler));
                 AddCameraHandler(() => { return EdsSetPropertyEventHandler(MainCamera.Ref, PropertyEvent_All, SDKPropertyEvent, MainCamera.Ref); }, nameof(EdsSetPropertyEventHandler));
-                CameraSessionOpen = true;
-
-                /*vvv This should be extracted out into a settings option to pass through*/
-
-                SetSaveToHost();
-                SetCapacity();
-
-                /*^^^ This should be extracted out into a settings option to pass through*/
+                CameraSessionOpen = true;              
 
                 var t = LogInfoAsync("Connected to Camera: {CameraName}", newCamera.Info.szDeviceDescription);
 
@@ -1314,8 +1324,16 @@ namespace EDSDK.NET
 
                 }
 
+
+                LogPropertyValue(nameof(PropID_Evf_OutputDevice), GetSetting(PropID_Evf_OutputDevice));
+
+
+
                 SetSetting(PropID_Evf_OutputDevice, EvfOutputDevice_PC);
                 IsLiveViewOn = true;
+
+                LogPropertyValue(nameof(PropID_Evf_OutputDevice), GetSetting(PropID_Evf_OutputDevice));
+
             }
         }
 
@@ -1497,6 +1515,11 @@ namespace EDSDK.NET
             }
         }
 
+        public void SetTFTEvf()
+        {
+            SetSetting(PropID_Evf_OutputDevice, EvfOutputDevice_TFT);
+        }
+
         /// <summary>
         /// Starts recording a video
         /// NOTE: Will throw an ArgumentException if the camera is not in the correct mode
@@ -1507,18 +1530,20 @@ namespace EDSDK.NET
             {
                 //Snapshot setting for restoration after filming completes
                 PrevEVFSetting = GetSetting(PropID_Evf_OutputDevice);
+
+
                 //Set EVF output to TFT to enable film, otherwise
-                SetSetting(PropID_Evf_OutputDevice, EvfOutputDevice_TFT);
+                //NOTE: Not working to set it and start video in the same action, disabling
+                //SetSetting(PropID_Evf_OutputDevice, EvfOutputDevice_TFT);
+                //SetTFTEvf();
 
                 //LogPropertyValue(nameof(PropID_Record), GetSetting(PropID_Record));
 
-                //SetSetting(PropID_Evf_OutputDevice, 3);
+                SetSetting(PropID_Evf_OutputDevice, 3);
 
                 //Check if the camera is ready to film
                 if (GetSetting(PropID_Record) != (uint)PropID_Record_Status.Movie_shooting_ready)
                 {
-                    var x = LogInfoAsync("Invalid setting, exit...");
-                    return;
                     //DOES NOT WORK, readonly setting?
                     //DOES NOT THROW AN ERROR
                     //SetSetting(PropID_Record, (uint)EdsDriveMode.Video);
@@ -1527,13 +1552,15 @@ namespace EDSDK.NET
 
                     LogPropertyValue(PropID_Record, GetSetting(PropID_Record));
                     var tx = Log(LogLevel.Critical, "Camera physical switch must be in movie record mode. Leave in this mode permanently!");
-                    throw new ArgumentException("Camera in invalid mode", nameof(PropID_Record));
+                    //throw new ArgumentException("Camera in invalid mode", nameof(PropID_Record));
                 }
                 IsFilming = true;
 
 
                 //to restore the current setting after recording
                 PrevSaveTo = GetSetting(PropID_SaveTo);
+                
+
                 //when recording videos, it has to be saved on the camera internal memory
                 SetSetting(PropID_SaveTo, (uint)EdsSaveTo.Camera);
                 this.DownloadVideo = false;
@@ -1545,7 +1572,7 @@ namespace EDSDK.NET
             }
         }
 
-        TaskCompletionSource<string> videoDownloadDone = new TaskCompletionSource<string>();
+        TaskCompletionSource<string> videoDownloadDone;
 
         /// <summary>
         /// Stops recording a video
@@ -1554,6 +1581,7 @@ namespace EDSDK.NET
         {
             if (IsFilming)
             {
+                videoDownloadDone = new TaskCompletionSource<string>();
                 SendSDKCommand(delegate
                 {
                         //Shut off live view (it will hang otherwise)
@@ -1564,8 +1592,11 @@ namespace EDSDK.NET
                     });
                 SetSetting(PropID_SaveTo, PrevSaveTo);
                 SetSetting(PropID_Evf_OutputDevice, PrevEVFSetting);
+                if(PrevCapacity.NumberOfFreeClusters != 0)
+                {
+                    SetCapacity(PrevCapacity);
+                }
                 IsFilming = false;
-
             }
             else
             {
@@ -1689,10 +1720,6 @@ namespace EDSDK.NET
             var t = Log(LogLevel.Error, message, args);
         }
 
-        void SetSaveToHost()
-        {
-            this.SetSetting(PropID_SaveTo, (uint)EdsSaveTo.Host);
-        }
 
         public void SetSaveToLocation(DirectoryInfo directory)
         {
@@ -1791,9 +1818,17 @@ namespace EDSDK.NET
             capacity.BytesPerSector = bytesPerSector;
             capacity.NumberOfFreeClusters = numberOfFreeClusters;
 
-            //set the values to camera
+            SetCapacity(capacity);
+        }
+
+        private void SetCapacity(EdsCapacity capacity)
+        {
+            PrevCapacity = capacity;
             SendSDKCommand(delegate { Error = EdsSetCapacity(MainCamera.Ref, capacity); });
         }
+
+
+
 
         /// <summary>
         /// Moves the focus (only works while in live view)
