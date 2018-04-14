@@ -287,6 +287,7 @@ namespace EDSDK.NET
         }
 
         public object Value { get; private set; }
+        public bool KeepAlive { get; set; }
 
         SummarizedLogger summaryLogger;
 
@@ -347,7 +348,6 @@ namespace EDSDK.NET
                                  select new SDKProperty(f.Name, (uint)f.GetValue(null));
             return filteredFields.ToArray();
         }
-
 
         /// <summary>
         /// Get a list of all connected cameras
@@ -824,6 +824,14 @@ namespace EDSDK.NET
                 case StateEvent_ShutDownTimerUpdate:
                     break;
                 case StateEvent_WillSoonShutDown:
+                    if (KeepAlive)
+                    {
+                        SendSDKCommand(() =>
+                        {
+                            logger.LogDebug("Extending camera shutdown timer");
+                            EdsSendCommand(MainCamera.Ref, CameraCommand_ExtendShutDownTimer, 0);
+                        }, sdkAction: nameof(CameraCommand_ExtendShutDownTimer));
+                    }
                     break;
             }
             return EDS_ERR_OK;
