@@ -405,6 +405,8 @@ namespace EDSDK.NET
         /// <param name="newCamera">The camera which will be used</param>
         public void OpenSession(Camera newCamera)
         {
+            logger?.LogDebug("Opening session");
+
             if (CameraSessionOpen) CloseSession();
             if (newCamera != null)
             {
@@ -435,6 +437,7 @@ namespace EDSDK.NET
         /// </summary>
         public void CloseSession()
         {
+            logger?.LogDebug("Closing session");
             if (CameraSessionOpen)
             {
                 //if live view is still on, stop it and wait till the thread has stopped
