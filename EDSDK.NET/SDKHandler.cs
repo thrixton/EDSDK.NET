@@ -943,8 +943,8 @@ namespace EDSDK.NET
             catch (Exception x)
             {
                 logger.LogError(x, "Error taking photo");
-                takePhotoCompletionSource?.TrySetCanceled();
-                videoDownloadDone?.TrySetCanceled();
+                takePhotoCompletionSource.TrySetException(x);
+                videoDownloadDone?.TrySetException(x);
             }
 
         }
