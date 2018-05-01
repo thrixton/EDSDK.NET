@@ -871,68 +871,81 @@ namespace EDSDK.NET
         /// <param name="directory">Path to where the image will be saved to</param>
         public void DownloadImage(IntPtr ObjectPointer, string directory, string fileName, bool isVideo = false)
         {
-            EdsDirectoryItemInfo dirInfo;
-            IntPtr streamRef;
-            //get information about object
-            Error = EdsGetDirectoryItemInfo(ObjectPointer, out dirInfo);
-            if (string.IsNullOrEmpty(fileName))
+            try
             {
-                fileName = dirInfo.szFileName;
-            }
-            else
-            {
-                FileInfo targetInfo = new FileInfo(fileName);
-                FileInfo cameraInfo = new FileInfo(dirInfo.szFileName);
-
-                if (!string.Equals(targetInfo.Extension, cameraInfo.Extension, StringComparison.CurrentCultureIgnoreCase))
+                EdsDirectoryItemInfo dirInfo;
+                IntPtr streamRef;
+                //get information about object
+                Error = EdsGetDirectoryItemInfo(ObjectPointer, out dirInfo);
+                if (string.IsNullOrEmpty(fileName))
                 {
-                    fileName = targetInfo.Name.Substring(0, targetInfo.Name.Length - targetInfo.Extension.Length) + cameraInfo.Extension;
+                    fileName = dirInfo.szFileName;
                 }
-            }
+                else
+                {
+                    FileInfo targetInfo = new FileInfo(fileName);
+                    FileInfo cameraInfo = new FileInfo(dirInfo.szFileName);
+
+                    if (!string.Equals(targetInfo.Extension, cameraInfo.Extension, StringComparison.CurrentCultureIgnoreCase))
+                    {
+                        fileName = targetInfo.Name.Substring(0, targetInfo.Name.Length - targetInfo.Extension.Length) + cameraInfo.Extension;
+                    }
+                }
 
 
-            string targetImage = Path.Combine(directory, fileName);
-            if (File.Exists(targetImage))
-            {
-                throw new NotImplementedException();
-            }
+                string targetImage = Path.Combine(directory, fileName);
+                if (File.Exists(targetImage))
+                {
+                    throw new NotImplementedException("Renaming files not permitted");
+                }
 
-            if (!Directory.Exists(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
+                if (!Directory.Exists(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
 
 
-            var t = LogInfoAsync("Downloading image {ImageFileName} to {ImageSaveDirectory}", fileName, directory);
+                var t = LogInfoAsync("Downloading image {ImageFileName} to {ImageSaveDirectory}", fileName, directory);
 
-            SendSDKCommand(delegate
-            {
-                var stopWatch = Stopwatch.StartNew();
+                SendSDKCommand(delegate
+                {
+
+                    var stopWatch = Stopwatch.StartNew();
 
                 //create filestream to data
                 Error = EdsCreateFileStream(targetImage, EdsFileCreateDisposition.CreateAlways, EdsAccess.ReadWrite, out streamRef);
                 //download file
                 STAThread.TryLockAndExecute(STAThread.ExecLock, nameof(STAThread.ExecLock), TimeSpan.FromSeconds(30), () =>
-                {
-                    DownloadData(ObjectPointer, streamRef);
-                });
+                    {
+                        DownloadData(ObjectPointer, streamRef);
+                    });
                 //release stream
                 Error = EdsRelease(streamRef);
-                if (isVideo)
-                {
-                    videoDownloadDone?.SetResult(targetImage);
-                }
 
-                stopWatch.Stop();
+                    stopWatch.Stop();
 
-                var downloadFile = new FileInfo(targetImage);
-                var mB = downloadFile.Length / 1000.0 / 1000;
+                    var downloadFile = new FileInfo(targetImage);
+                    var mB = downloadFile.Length / 1000.0 / 1000;
 
-                t = LogInfoAsync("Downloaded file. FileName: {DownloadFileName}, FileLengthMB: {FileLengthMB}, DurationSeconds: {DurationSeconds}, MBPerSecond: {MBPerSecond}", targetImage, mB.ToString("0.0"), stopWatch.Elapsed.TotalSeconds.ToString("0.0"), (mB / stopWatch.Elapsed.TotalSeconds).ToString("0.0"));
+                    t = LogInfoAsync("Downloaded file. FileName: {DownloadFileName}, FileLengthMB: {FileLengthMB}, DurationSeconds: {DurationSeconds}, MBPerSecond: {MBPerSecond}", targetImage, mB.ToString("0.0"), stopWatch.Elapsed.TotalSeconds.ToString("0.0"), (mB / stopWatch.Elapsed.TotalSeconds).ToString("0.0"));
 
+                    if (isVideo)
+                    {
+                        videoDownloadDone?.TrySetResult(targetImage);
+                    }
+                    else
+                    {
+                        takePhotoCompletionSource?.TrySetResult(new FileInfo(fileName));
+                    }
 
-
-            }, true);
+                }, true);
+            }
+            catch (Exception x)
+            {
+                logger.LogError(x, "Error taking photo");
+                takePhotoCompletionSource?.TrySetCanceled();
+                videoDownloadDone?.TrySetCanceled();
+            }
 
         }
 
@@ -1626,7 +1639,7 @@ namespace EDSDK.NET
             }, true);
         }
 
-        private TaskCompletionSource<FileInfo> takePhotoCompletionSource = new TaskCompletionSource<FileInfo>();
+        private TaskCompletionSource<FileInfo> takePhotoCompletionSource;
 
         /// <summary>
         /// Takes a photo and returns the file info
@@ -1636,6 +1649,7 @@ namespace EDSDK.NET
         {
             return await Task.Run<FileInfo>(async () =>
             {
+                takePhotoCompletionSource = new TaskCompletionSource<FileInfo>();
                 SetSaveToLocation(saveFile.Directory);
                 this.ImageSaveFileName = saveFile.Name;
 

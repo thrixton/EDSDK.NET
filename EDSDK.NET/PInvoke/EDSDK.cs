@@ -548,6 +548,7 @@ namespace EDSDKLib
 		-----------------------------------------------------------------------------*/
         public const uint EvfOutputDevice_TFT = 1;
         public const uint EvfOutputDevice_PC = 2;
+        public const uint EvfOutputDevice_Disabled = 0;
 
 
         /*-----------------------------------------------------------------------------
