@@ -1593,17 +1593,19 @@ namespace EDSDK.NET
         /// <summary>
         /// Stops recording a video
         /// </summary>
-        public TaskCompletionSource<string> StopFilming()
+        public TaskCompletionSource<string> StopFilming(out long unixTimeMs)
         {
             if (IsFilming)
             {
                 videoDownloadDone = new TaskCompletionSource<string>();
+                long stopMs = 0;
                 SendSDKCommand(delegate
                 {
                         //Shut off live view (it will hang otherwise)
                         //StopLiveView(false);
                         //stop video recording
                         Error = EdsSetPropertyData(MainCamera.Ref, PropID_Record, 0, sizeof(PropID_Record_Status), (uint)PropID_Record_Status.End_movie_shooting);
+                    stopMs = DateTimeOffset.Now.ToUnixTimeMilliseconds();
                         //set back to previous state
                     });
                 SetSetting(PropID_SaveTo, PrevSaveTo);
@@ -1613,10 +1615,12 @@ namespace EDSDK.NET
                     SetCapacity(PrevCapacity);
                 }
                 IsFilming = false;
+                unixTimeMs = stopMs;
             }
             else
             {
                 videoDownloadDone.SetResult(null);
+                unixTimeMs = 0;
             }
             return videoDownloadDone;
         }
