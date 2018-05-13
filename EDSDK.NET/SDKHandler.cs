@@ -50,7 +50,14 @@ namespace EDSDK.NET
         /// <summary>
         /// File name of next photo
         /// </summary>
-        public string ImageSaveFileName { get; set; }
+        public string ImageSaveFilename
+        {
+            get => _imageSaveFilename; set
+            {
+                LogInfoAsync("Setting ImageSaveFilename. ImageSaveFilename: {ImageSaveFilename}", _imageSaveFilename);
+                _imageSaveFilename = value;
+            }
+        }
 
         /// <summary>
         /// The focus and zoom border rectangle for live view (set after first use of live view)
@@ -417,7 +424,7 @@ namespace EDSDK.NET
                 AddCameraHandler(() => { return EdsSetCameraStateEventHandler(MainCamera.Ref, StateEvent_All, SDKStateEvent, MainCamera.Ref); }, nameof(EdsSetCameraStateEventHandler));
                 AddCameraHandler(() => { return EdsSetObjectEventHandler(MainCamera.Ref, ObjectEvent_All, SDKObjectEvent, MainCamera.Ref); }, nameof(EdsSetObjectEventHandler));
                 AddCameraHandler(() => { return EdsSetPropertyEventHandler(MainCamera.Ref, PropertyEvent_All, SDKPropertyEvent, MainCamera.Ref); }, nameof(EdsSetPropertyEventHandler));
-                CameraSessionOpen = true;              
+                CameraSessionOpen = true;
 
                 var t = LogInfoAsync("Connected to Camera: {CameraName}", newCamera.Info.szDeviceDescription);
 
@@ -521,7 +528,7 @@ namespace EDSDK.NET
                 case ObjectEvent_DirItemCreated:
                     if (DownloadVideo)
                     {
-                        DownloadImage(inRef, ImageSaveDirectory, ImageSaveFileName, isVideo: true);
+                        DownloadImage(inRef, ImageSaveDirectory, ImageSaveFilename, isVideo: true);
                         DownloadVideo = false;
                     }
                     break;
@@ -530,7 +537,7 @@ namespace EDSDK.NET
                 case ObjectEvent_DirItemRemoved:
                     break;
                 case ObjectEvent_DirItemRequestTransfer:
-                    DownloadImage(inRef, ImageSaveDirectory, ImageSaveFileName);
+                    DownloadImage(inRef, ImageSaveDirectory, ImageSaveFilename);
                     break;
                 case ObjectEvent_DirItemRequestTransferDT:
                     break;
@@ -892,6 +899,7 @@ namespace EDSDK.NET
                     }
                 }
 
+                LogInfoAsync("Downloading data. Filename: {Filename}", fileName);
 
                 string targetImage = Path.Combine(directory, fileName);
                 if (File.Exists(targetImage))
@@ -905,29 +913,29 @@ namespace EDSDK.NET
                 }
 
 
-                var t = LogInfoAsync("Downloading image {ImageFileName} to {ImageSaveDirectory}", fileName, directory);
+                var t = LogInfoAsync("Downloading data {Filename} to {SaveDirectory}", fileName, directory);
 
                 SendSDKCommand(delegate
                 {
 
                     var stopWatch = Stopwatch.StartNew();
 
-                //create filestream to data
-                Error = EdsCreateFileStream(targetImage, EdsFileCreateDisposition.CreateAlways, EdsAccess.ReadWrite, out streamRef);
-                //download file
-                STAThread.TryLockAndExecute(STAThread.ExecLock, nameof(STAThread.ExecLock), TimeSpan.FromSeconds(30), () =>
-                    {
-                        DownloadData(ObjectPointer, streamRef);
-                    });
-                //release stream
-                Error = EdsRelease(streamRef);
+                    //create filestream to data
+                    Error = EdsCreateFileStream(targetImage, EdsFileCreateDisposition.CreateAlways, EdsAccess.ReadWrite, out streamRef);
+                    //download file
+                    STAThread.TryLockAndExecute(STAThread.ExecLock, nameof(STAThread.ExecLock), TimeSpan.FromSeconds(30), () =>
+                        {
+                            DownloadData(ObjectPointer, streamRef);
+                        });
+                    //release stream
+                    Error = EdsRelease(streamRef);
 
                     stopWatch.Stop();
 
                     var downloadFile = new FileInfo(targetImage);
                     var mB = downloadFile.Length / 1000.0 / 1000;
 
-                    t = LogInfoAsync("Downloaded file. FileName: {DownloadFileName}, FileLengthMB: {FileLengthMB}, DurationSeconds: {DurationSeconds}, MBPerSecond: {MBPerSecond}", targetImage, mB.ToString("0.0"), stopWatch.Elapsed.TotalSeconds.ToString("0.0"), (mB / stopWatch.Elapsed.TotalSeconds).ToString("0.0"));
+                    t = LogInfoAsync("Downloaded data. Filename: {Filename}, FileLengthMB: {FileLengthMB}, DurationSeconds: {DurationSeconds}, MBPerSecond: {MBPerSecond}", targetImage, mB.ToString("0.0"), stopWatch.Elapsed.TotalSeconds.ToString("0.0"), (mB / stopWatch.Elapsed.TotalSeconds).ToString("0.0"));
 
                     if (isVideo)
                     {
@@ -942,7 +950,7 @@ namespace EDSDK.NET
             }
             catch (Exception x)
             {
-                logger.LogError(x, "Error taking photo");
+                logger.LogError(x, "Error downloading data");
                 takePhotoCompletionSource.TrySetException(x);
                 videoDownloadDone?.TrySetException(x);
             }
@@ -1575,7 +1583,7 @@ namespace EDSDK.NET
 
                 //to restore the current setting after recording
                 PrevSaveTo = GetSetting(PropID_SaveTo);
-                
+
 
                 //when recording videos, it has to be saved on the camera internal memory
                 SetSetting(PropID_SaveTo, (uint)EdsSaveTo.Camera);
@@ -1601,16 +1609,16 @@ namespace EDSDK.NET
                 long stopMs = 0;
                 SendSDKCommand(delegate
                 {
-                        //Shut off live view (it will hang otherwise)
-                        //StopLiveView(false);
-                        //stop video recording
-                        Error = EdsSetPropertyData(MainCamera.Ref, PropID_Record, 0, sizeof(PropID_Record_Status), (uint)PropID_Record_Status.End_movie_shooting);
+                    //Shut off live view (it will hang otherwise)
+                    //StopLiveView(false);
+                    //stop video recording
+                    Error = EdsSetPropertyData(MainCamera.Ref, PropID_Record, 0, sizeof(PropID_Record_Status), (uint)PropID_Record_Status.End_movie_shooting);
                     stopMs = DateTimeOffset.Now.ToUnixTimeMilliseconds();
-                        //set back to previous state
-                    });
+                    //set back to previous state
+                });
                 SetSetting(PropID_SaveTo, PrevSaveTo);
                 SetSetting(PropID_Evf_OutputDevice, PrevEVFSetting);
-                if(PrevCapacity.NumberOfFreeClusters != 0)
+                if (PrevCapacity.NumberOfFreeClusters != 0)
                 {
                     SetCapacity(PrevCapacity);
                 }
@@ -1644,6 +1652,7 @@ namespace EDSDK.NET
         }
 
         private TaskCompletionSource<FileInfo> takePhotoCompletionSource;
+        private string _imageSaveFilename;
 
         /// <summary>
         /// Takes a photo and returns the file info
@@ -1655,7 +1664,7 @@ namespace EDSDK.NET
             {
                 takePhotoCompletionSource = new TaskCompletionSource<FileInfo>();
                 SetSaveToLocation(saveFile.Directory);
-                this.ImageSaveFileName = saveFile.Name;
+                this.ImageSaveFilename = saveFile.Name;
 
                 this.TakePhoto();
 
