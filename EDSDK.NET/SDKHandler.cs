@@ -1389,15 +1389,16 @@ namespace EDSDK.NET
             if (IsLiveViewOn)
             {
                 var t = LogInfoAsync("Stopping liveview");
-            }
-            this.LVoff = LVoff;
-            IsLiveViewOn = false;
+                this.LVoff = LVoff;
+                IsLiveViewOn = false;
 
-            //Wait 5 seconds for evf thread to finish, otherwise manually stop
-            if (!cancelLiveViewWait.WaitOne(TimeSpan.FromSeconds(5)))
-            {
-                KillLiveView();
+                //Wait 5 seconds for evf thread to finish, otherwise manually stop
+                if (!cancelLiveViewWait.WaitOne(TimeSpan.FromSeconds(5)))
+                {
+                    KillLiveView();
+                }
             }
+
         }
 
         AutoResetEvent cancelLiveViewWait = new AutoResetEvent(false);
