@@ -105,7 +105,7 @@ namespace EDSDK.NET
                         case EDS_ERR_DEVICE_INVALID:
                         case EDS_ERR_DEVICE_NOT_FOUND:
                             string name = FindProperty(SDKErrors, value).Name;
-                            OnSdkError(new SdkErrorEventArgs() { Error = name, ErrorLevel = LogLevel.Critical});
+                            OnSdkError(new SdkErrorEventArgs() { Error = name, ErrorLevel = LogLevel.Critical });
                             break;
                     }
 
@@ -1932,27 +1932,27 @@ namespace EDSDK.NET
             //get the number of volumes currently installed in the camera
             int VolumeCount;
             Error = EdsGetChildCount(camera.Reference, out VolumeCount);
-            List<CameraFileEntry> VolumeEntries = new List<CameraFileEntry>();
+            List<CameraFileEntry> volumes = new List<CameraFileEntry>();
 
             //iterate through all of them
             for (int i = 0; i < VolumeCount; i++)
             {
                 //get information about volume
-                IntPtr ChildPtr;
-                Error = EdsGetChildAtIndex(MainCamera.Ref, i, out ChildPtr);
-                EdsVolumeInfo vinfo = new EdsVolumeInfo();
-                SendSDKCommand(delegate { Error = EdsGetVolumeInfo(ChildPtr, out vinfo); });
+                IntPtr childReference;
+                Error = EdsGetChildAtIndex(MainCamera.Ref, i, out childReference);
+                EdsVolumeInfo volumeInfo = new EdsVolumeInfo();
+                SendSDKCommand(delegate { Error = EdsGetVolumeInfo(childReference, out volumeInfo); });
 
                 //ignore the HDD
-                if (vinfo.szVolumeLabel != "HDD")
+                if (volumeInfo.szVolumeLabel != "HDD")
                 {
                     //add volume to the list
-                    VolumeEntries.Add(new CameraFileEntry("Volume" + i + "(" + vinfo.szVolumeLabel + ")", CameraFileEntryTypes.Volume, ChildPtr));
+                    volumes.Add(new CameraFileEntry("Volume" + i + "(" + volumeInfo.szVolumeLabel + ")", CameraFileEntryTypes.Volume, childReference));
                 }
                 //release the volume
-                Error = EdsRelease(ChildPtr);
+                Error = EdsRelease(childReference);
             }
-            return VolumeEntries;
+            return volumes;
         }
 
         public CameraFileEntry GetCamera()
@@ -1967,15 +1967,15 @@ namespace EDSDK.NET
         public CameraFileEntry GetAllEntries()
         {
             //create the main entry which contains all subentries
-            CameraFileEntry MainEntry = GetCamera();
+            CameraFileEntry camera = GetCamera();
 
-            List<CameraFileEntry> VolumeEntries = GetVolumes(MainEntry);
+            List<CameraFileEntry> volumes = GetVolumes(camera);
 
-            VolumeEntries.ForEach(v => v.AddSubEntries(GetChildren(v.Reference)));
+            volumes.ForEach(v => v.AddSubEntries(GetChildren(v.Reference)));
 
             //add all volumes to the main entry and return it
-            MainEntry.AddSubEntries(VolumeEntries.ToArray());
-            return MainEntry;
+            camera.AddSubEntries(volumes.ToArray());
+            return camera;
         }
 
         /// <summary>
@@ -1998,42 +1998,42 @@ namespace EDSDK.NET
         /// <returns></returns>
         private CameraFileEntry[] GetChildren(IntPtr ptr)
         {
-            int ChildCount;
+            int childCount;
             //get children of first pointer
-            Error = EdsGetChildCount(ptr, out ChildCount);
-            if (ChildCount > 0)
+            Error = EdsGetChildCount(ptr, out childCount);
+            if (childCount > 0)
             {
                 //if it has children, create an array of entries
-                CameraFileEntry[] MainEntry = new CameraFileEntry[ChildCount];
-                for (int i = 0; i < ChildCount; i++)
+                CameraFileEntry[] children = new CameraFileEntry[childCount];
+                for (int i = 0; i < childCount; i++)
                 {
-                    IntPtr ChildPtr;
+                    IntPtr childReference;
                     //get children of children
-                    Error = EdsGetChildAtIndex(ptr, i, out ChildPtr);
+                    Error = EdsGetChildAtIndex(ptr, i, out childReference);
                     //get the information about this children
-                    EdsDirectoryItemInfo ChildInfo = new EdsDirectoryItemInfo();
-                    SendSDKCommand(delegate { Error = EdsGetDirectoryItemInfo(ChildPtr, out ChildInfo); });
+                    EdsDirectoryItemInfo child = new EdsDirectoryItemInfo();
+                    SendSDKCommand(delegate { Error = EdsGetDirectoryItemInfo(childReference, out child); });
 
                     //create entry from information
-                    MainEntry[i] = new CameraFileEntry(ChildInfo.szFileName, GetBool(ChildInfo.isFolder)?CameraFileEntryTypes.Folder:CameraFileEntryTypes.File, ChildPtr);
-                    if (MainEntry[i].Type == CameraFileEntryTypes.File)
+                    children[i] = new CameraFileEntry(child.szFileName, GetBool(child.isFolder) ? CameraFileEntryTypes.Folder : CameraFileEntryTypes.File, childReference);
+                    if (children[i].Type == CameraFileEntryTypes.File)
                     {
                         //if it's not a folder, create thumbnail and save it to the entry
                         IntPtr stream;
                         Error = EdsCreateMemoryStream(0, out stream);
-                        SendSDKCommand(delegate { Error = EdsDownloadThumbnail(ChildPtr, stream); });
-                        MainEntry[i].AddThumb(GetImage(stream, EdsImageSource.Thumbnail));
+                        SendSDKCommand(delegate { Error = EdsDownloadThumbnail(childReference, stream); });
+                        children[i].AddThumb(GetImage(stream, EdsImageSource.Thumbnail));
                     }
                     else
                     {
                         //if it's a folder, check for children with recursion
-                        CameraFileEntry[] retval = GetChildren(ChildPtr);
-                        if (retval != null) MainEntry[i].AddSubEntries(retval);
+                        CameraFileEntry[] retval = GetChildren(childReference);
+                        if (retval != null) children[i].AddSubEntries(retval);
                     }
                     //release current children
-                    EdsRelease(ChildPtr);
+                    EdsRelease(childReference);
                 }
-                return MainEntry;
+                return children;
             }
             else return null;
         }
