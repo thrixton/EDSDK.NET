@@ -22,6 +22,12 @@ namespace EDSDK.NET
     /// </summary>
     public class SDKHandler : IDisposable
     {
+        #region Events
+
+        public event EventHandler<SdkErrorEventArgs> SdkError;
+
+        #endregion Events
+
         #region Variables
 
         ILogger logger;
@@ -54,7 +60,7 @@ namespace EDSDK.NET
         {
             get => _imageSaveFilename; set
             {
-                LogInfoAsync("Setting ImageSaveFilename. ImageSaveFilename: {ImageSaveFilename}", _imageSaveFilename);
+                var t = LogInfoAsync("Setting ImageSaveFilename. ImageSaveFilename: {ImageSaveFilename}", _imageSaveFilename);
                 _imageSaveFilename = value;
             }
         }
@@ -91,6 +97,18 @@ namespace EDSDK.NET
                 {
                     var errorProperty = SDKErrorToProperty(value);
                     LogError("SDK Error. Name: {0}, Value: {1}", errorProperty.Name, errorProperty.ValueToString());
+
+
+                    switch (value)
+                    {
+                        case EDS_ERR_COMM_DISCONNECTED:
+                        case EDS_ERR_DEVICE_INVALID:
+                        case EDS_ERR_DEVICE_NOT_FOUND:
+                            string name = FindProperty(SDKErrors, value).Name;
+                            OnSdkError(new SdkErrorEventArgs() { Error = name, ErrorLevel = LogLevel.Critical});
+                            break;
+                    }
+
                 }
             }
         }
@@ -859,13 +877,15 @@ namespace EDSDK.NET
 
         protected void OnCameraHasShutdown()
         {
-            if (CameraHasShutdown != null)
-            {
-                CameraHasShutdown(this, new EventArgs());
-            }
+            CameraHasShutdown?.Invoke(this, new EventArgs());
         }
 
-        #endregion
+        protected void OnSdkError(SdkErrorEventArgs e)
+        {
+            SdkError?.Invoke(this, e);
+        }
+
+        #endregion Eventhandling
 
         #region Camera commands
 
