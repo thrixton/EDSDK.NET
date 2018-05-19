@@ -1812,6 +1812,20 @@ namespace EDSDK.NET
             }, true);
         }
 
+
+        public void FormatAllVolumes()
+        {
+            List<CameraFileEntry> volumes = GetVolumes();
+            volumes.ForEach(v => FormatVolume(v));
+        }
+
+        public void FormatVolume(CameraFileEntry volume)
+        {
+            logger.LogDebug("Formatting volume. Volume: {Volume}", volume.Name);
+            SendSDKCommand(() => Error = EdsFormatVolume(volume.Reference), sdkAction: nameof(EdsFormatVolume));
+        }
+
+
         #endregion
 
         #region Other
@@ -1908,18 +1922,16 @@ namespace EDSDK.NET
             }
         }
 
-        /// <summary>
-        /// Gets all volumes, folders and files existing on the camera
-        /// </summary>
-        /// <returns>A CameraFileEntry with all informations</returns>
-        public CameraFileEntry GetAllEntries()
+        public List<CameraFileEntry> GetVolumes()
         {
-            //create the main entry which contains all subentries
-            CameraFileEntry MainEntry = new CameraFileEntry("Camera", true);
+            return GetVolumes(GetCamera());
+        }
 
+        public List<CameraFileEntry> GetVolumes(CameraFileEntry camera)
+        {
             //get the number of volumes currently installed in the camera
             int VolumeCount;
-            Error = EdsGetChildCount(MainCamera.Ref, out VolumeCount);
+            Error = EdsGetChildCount(camera.Reference, out VolumeCount);
             List<CameraFileEntry> VolumeEntries = new List<CameraFileEntry>();
 
             //iterate through all of them
@@ -1935,13 +1947,32 @@ namespace EDSDK.NET
                 if (vinfo.szVolumeLabel != "HDD")
                 {
                     //add volume to the list
-                    VolumeEntries.Add(new CameraFileEntry("Volume" + i + "(" + vinfo.szVolumeLabel + ")", true));
-                    //get all child entries on this volume
-                    VolumeEntries[i].AddSubEntries(GetChildren(ChildPtr));
+                    VolumeEntries.Add(new CameraFileEntry("Volume" + i + "(" + vinfo.szVolumeLabel + ")", CameraFileEntryTypes.Volume, ChildPtr));
                 }
                 //release the volume
                 Error = EdsRelease(ChildPtr);
             }
+            return VolumeEntries;
+        }
+
+        public CameraFileEntry GetCamera()
+        {
+            return new CameraFileEntry("Camera", CameraFileEntryTypes.Camera, MainCamera.Ref);
+        }
+
+        /// <summary>
+        /// Gets all volumes, folders and files existing on the camera
+        /// </summary>
+        /// <returns>A CameraFileEntry with all informations</returns>
+        public CameraFileEntry GetAllEntries()
+        {
+            //create the main entry which contains all subentries
+            CameraFileEntry MainEntry = GetCamera();
+
+            List<CameraFileEntry> VolumeEntries = GetVolumes(MainEntry);
+
+            VolumeEntries.ForEach(v => v.AddSubEntries(GetChildren(v.Reference)));
+
             //add all volumes to the main entry and return it
             MainEntry.AddSubEntries(VolumeEntries.ToArray());
             return MainEntry;
@@ -1984,10 +2015,10 @@ namespace EDSDK.NET
                     SendSDKCommand(delegate { Error = EdsGetDirectoryItemInfo(ChildPtr, out ChildInfo); });
 
                     //create entry from information
-                    MainEntry[i] = new CameraFileEntry(ChildInfo.szFileName, GetBool(ChildInfo.isFolder));
-                    if (!MainEntry[i].IsFolder)
+                    MainEntry[i] = new CameraFileEntry(ChildInfo.szFileName, GetBool(ChildInfo.isFolder)?CameraFileEntryTypes.Folder:CameraFileEntryTypes.File, ChildPtr);
+                    if (MainEntry[i].Type == CameraFileEntryTypes.File)
                     {
-                        //if it's not a folder, create thumbnail and safe it to the entry
+                        //if it's not a folder, create thumbnail and save it to the entry
                         IntPtr stream;
                         Error = EdsCreateMemoryStream(0, out stream);
                         SendSDKCommand(delegate { Error = EdsDownloadThumbnail(ChildPtr, stream); });

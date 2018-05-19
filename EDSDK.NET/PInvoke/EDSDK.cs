@@ -1293,7 +1293,7 @@ namespace EDSDKLib
         //  Returns:    Any of the sdk errors.
         -----------------------------------------------------------------------------*/
         [DllImport(DLLPath)]
-        public extern static uint EdsGetVolumeInfo(IntPtr inCameraRef, out EdsVolumeInfo outVolumeInfo);
+        public extern static uint EdsGetVolumeInfo(IntPtr inVolumeRef, out EdsVolumeInfo outVolumeInfo);
 
         /*-----------------------------------------------------------------------------
         //

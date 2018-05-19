@@ -5,6 +5,14 @@ using System.Text;
 
 namespace EDSDK.NET
 {
+    public enum CameraFileEntryTypes
+    {
+        Camera = 5,
+        Volume = 10,
+        Folder = 20,
+        File = 30,
+    }
+
     /// <summary>
     /// A storage for a camera filesystem entry
     /// </summary>
@@ -14,10 +22,11 @@ namespace EDSDK.NET
         /// Name of this entry
         /// </summary>
         public string Name { get; private set; }
-        /// <summary>
-        /// States if this entry is a folder or not
-        /// </summary>
-        public bool IsFolder { get; private set; }
+
+        public CameraFileEntryTypes Type { get; private set; }
+
+        public IntPtr Reference { get; private set; }
+
         /// <summary>
         /// Thumbnail of this entry (might be null if not available)
         /// </summary>
@@ -32,10 +41,11 @@ namespace EDSDK.NET
         /// </summary>
         /// <param name="Name">Name of this entry</param>
         /// <param name="IsFolder">True if this entry is a folder, false otherwise</param>
-        public CameraFileEntry(string Name, bool IsFolder)
+        public CameraFileEntry(string Name, CameraFileEntryTypes type, IntPtr reference)
         {
             this.Name = Name;
-            this.IsFolder = IsFolder;
+            this.Type = type;
+            this.Reference = reference;
         }
 
         /// <summary>
