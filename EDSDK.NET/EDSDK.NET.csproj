@@ -6,7 +6,7 @@
     <FileVersion>18.5.18.1619</FileVersion>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'  or '$(Configuration)|$(Platform)'=='Debug|x86' or '$(Configuration)|$(Platform)'=='Release|AnyCPU' or '$(Configuration)|$(Platform)'=='Release|x86'">
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
