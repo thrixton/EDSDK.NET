@@ -331,6 +331,8 @@ namespace EDSDK.NET
 
             STAThread.SetLogAction(loggerFactory.CreateLogger(nameof(STAThread)));
 
+            STAThread.FatalError += STAThread_FatalError;
+
             summaryLogger = new SummarizedLogger(logger, LogLevel.Debug, nameof(SDKHandler))
                 .SetFrequency(TimeSpan.FromSeconds(10));
 
@@ -366,6 +368,12 @@ namespace EDSDK.NET
             SDKProgressCallbackEvent += new EdsProgressCallback(Camera_SDKProgressCallbackEvent);
             SDKObjectEvent += new EdsObjectEventHandler(Camera_SDKObjectEvent);
 
+        }
+
+        private void STAThread_FatalError(object sender, EventArgs e)
+        {
+            var args = new SdkErrorEventArgs() { Error = "Execution thread error", ErrorLevel = LogLevel.Critical };
+            OnSdkError(args);
         }
 
         /// <summary>

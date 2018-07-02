@@ -13,6 +13,13 @@ namespace EDSDK.NET
     {
         static ILogger logger;
 
+        public static event EventHandler<EventArgs> FatalError;
+
+        static void OnFatalError()
+        {
+            FatalError?.Invoke(null, EventArgs.Empty);
+        }
+
         public static void SetLogAction(ILogger logger)
         {
             STAThread.logger = logger;
