@@ -58,7 +58,8 @@ namespace EDSDK.NET
         /// </summary>
         public string ImageSaveFilename
         {
-            get => _imageSaveFilename; set
+            get => _imageSaveFilename;
+            set
             {
                 var t = LogInfoAsync("Setting ImageSaveFilename. ImageSaveFilename: {ImageSaveFilename}", _imageSaveFilename);
                 _imageSaveFilename = value;
