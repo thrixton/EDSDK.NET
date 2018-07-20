@@ -969,6 +969,7 @@ namespace EDSDK.NET
                     if (isVideo)
                     {
                         videoDownloadDone?.TrySetResult(targetImage);
+                        DeleteData(ObjectPointer);
                     }
                     else
                     {
@@ -984,6 +985,12 @@ namespace EDSDK.NET
                 videoDownloadDone?.TrySetException(x);
             }
 
+        }
+
+        private void DeleteData(IntPtr objectPointer)
+        {
+            logger.LogDebug("Deleting object. Pointer: {Pointer}", objectPointer);
+            SendSDKCommand(() => { EdsDeleteDirectoryItem(objectPointer); }, sdkAction: nameof(EdsDeleteDirectoryItem));
         }
 
         /// <summary>
