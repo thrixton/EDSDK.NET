@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Drawing;
 using System.Text;
+using static EDSDKLib.EDSDK;
 
 namespace EDSDK.NET
 {
@@ -65,5 +66,7 @@ namespace EDSDK.NET
         {
             this.Thumbnail = Thumbnail;
         }
+
+        public EdsVolumeInfo Volume { get; set; }
     }
 }

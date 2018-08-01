@@ -969,7 +969,6 @@ namespace EDSDK.NET
                     if (isVideo)
                     {
                         videoDownloadDone?.TrySetResult(targetImage);
-                        DeleteData(ObjectPointer);
                     }
                     else
                     {
@@ -986,12 +985,7 @@ namespace EDSDK.NET
             }
 
         }
-
-        private void DeleteData(IntPtr objectPointer)
-        {
-            logger.LogDebug("Deleting object. Pointer: {Pointer}", objectPointer);
-            SendSDKCommand(() => { EdsDeleteDirectoryItem(objectPointer); }, sdkAction: nameof(EdsDeleteDirectoryItem));
-        }
+        
 
         /// <summary>
         /// Downloads a jpg image from the camera into a Bitmap. Fires the ImageDownloaded event when done.
@@ -1831,14 +1825,50 @@ namespace EDSDK.NET
 
         public void FormatAllVolumes()
         {
-            List<CameraFileEntry> volumes = GetVolumes();
-            volumes.ForEach(v => FormatVolume(v));
+            //get the number of volumes currently installed in the camera
+            int VolumeCount;
+            Error = EdsGetChildCount(GetCamera().Reference, out VolumeCount);
+
+            for (int i = 0; i < VolumeCount; i++)
+            {
+                //get information about volume
+                IntPtr childReference;
+                Error = EdsGetChildAtIndex(MainCamera.Ref, i, out childReference);
+                EdsVolumeInfo volumeInfo = new EdsVolumeInfo();
+                SendSDKCommand(delegate { Error = EdsGetVolumeInfo(childReference, out volumeInfo); });
+
+                    if (volumeInfo.StorageType != (uint)EdsStorageType.Non && volumeInfo.Access == (uint)EdsAccess.ReadWrite)
+                    {
+                        logger.LogInformation("Formatting volume. Volume: {Volume}", volumeInfo.szVolumeLabel);
+                        SendSDKCommand(() =>
+                        {
+                            Error = EdsFormatVolume(childReference);
+                        });
+                }
+                Error = EdsRelease(childReference);
+            }
         }
 
         public void FormatVolume(CameraFileEntry volume)
         {
+            throw new NotImplementedException();
+            // NOTE: Need to marry up obj ref to camera entry then delete based on camera entry / ref
             logger.LogDebug("Formatting volume. Volume: {Volume}", volume.Name);
-            SendSDKCommand(() => Error = EdsFormatVolume(volume.Reference), sdkAction: nameof(EdsFormatVolume));
+            SendSDKCommand(() =>
+            {
+                var ptr = Marshal.AllocHGlobal(Marshal.SizeOf(volume.Volume));
+                try
+                {
+                    Marshal.StructureToPtr(volume.Volume, ptr, false);
+                    Error = EdsFormatVolume(ptr);
+
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(ptr);
+                }
+            }, sdkAction: nameof(EdsFormatVolume)
+            );
         }
 
 
@@ -1943,6 +1973,8 @@ namespace EDSDK.NET
             return GetVolumes(GetCamera());
         }
 
+
+
         public List<CameraFileEntry> GetVolumes(CameraFileEntry camera)
         {
             //get the number of volumes currently installed in the camera
@@ -1958,12 +1990,11 @@ namespace EDSDK.NET
                 Error = EdsGetChildAtIndex(MainCamera.Ref, i, out childReference);
                 EdsVolumeInfo volumeInfo = new EdsVolumeInfo();
                 SendSDKCommand(delegate { Error = EdsGetVolumeInfo(childReference, out volumeInfo); });
-
                 //ignore the HDD
                 if (volumeInfo.szVolumeLabel != "HDD")
                 {
                     //add volume to the list
-                    volumes.Add(new CameraFileEntry("Volume" + i + "(" + volumeInfo.szVolumeLabel + ")", CameraFileEntryTypes.Volume, childReference));
+                    volumes.Add(new CameraFileEntry("Volume" + i + "(" + volumeInfo.szVolumeLabel + ")", CameraFileEntryTypes.Volume, childReference) { Volume = volumeInfo });
                 }
                 //release the volume
                 Error = EdsRelease(childReference);
@@ -1974,6 +2005,27 @@ namespace EDSDK.NET
         public CameraFileEntry GetCamera()
         {
             return new CameraFileEntry("Camera", CameraFileEntryTypes.Camera, MainCamera.Ref);
+        }
+
+        public void DeleteFileItem(CameraFileEntry fileItem)
+        {
+            throw new NotImplementedException();
+            // NOTE: Get original structure from camera to delete
+            SendSDKCommand(() =>
+            {
+                var ptr = Marshal.AllocHGlobal(Marshal.SizeOf(fileItem));
+                try
+                {
+                    Marshal.StructureToPtr(fileItem, ptr, false);
+                    Error = EdsDeleteDirectoryItem(ptr);
+
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(ptr);
+                }
+            }
+            );
         }
 
         /// <summary>
@@ -2029,16 +2081,18 @@ namespace EDSDK.NET
                     //get the information about this children
                     EdsDirectoryItemInfo child = new EdsDirectoryItemInfo();
                     SendSDKCommand(delegate { Error = EdsGetDirectoryItemInfo(childReference, out child); });
-
                     //create entry from information
                     children[i] = new CameraFileEntry(child.szFileName, GetBool(child.isFolder) ? CameraFileEntryTypes.Folder : CameraFileEntryTypes.File, childReference);
                     if (children[i].Type == CameraFileEntryTypes.File)
                     {
-                        //if it's not a folder, create thumbnail and save it to the entry
-                        IntPtr stream;
-                        Error = EdsCreateMemoryStream(0, out stream);
-                        SendSDKCommand(delegate { Error = EdsDownloadThumbnail(childReference, stream); });
-                        children[i].AddThumb(GetImage(stream, EdsImageSource.Thumbnail));
+                        if (false)
+                        {
+                            //if it's not a folder, create thumbnail and save it to the entry                       
+                            IntPtr stream;
+                            Error = EdsCreateMemoryStream(0, out stream);
+                            SendSDKCommand(delegate { Error = EdsDownloadThumbnail(childReference, stream); });
+                            children[i].AddThumb(GetImage(stream, EdsImageSource.Thumbnail));
+                        }
                     }
                     else
                     {
@@ -2051,7 +2105,7 @@ namespace EDSDK.NET
                 }
                 return children;
             }
-            else return null;
+            else return new CameraFileEntry[0];
         }
 
         /// <summary>
