@@ -82,6 +82,8 @@ namespace EDSDK.NET
         {
             if (isRunning)
             {
+                logger.LogInformation("Shutdown");
+
                 isRunning = false;
                 bool locked = false;
 

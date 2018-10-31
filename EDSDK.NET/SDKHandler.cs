@@ -1394,12 +1394,12 @@ namespace EDSDK.NET
         /// <summary>
         /// Stops the live view
         /// </summary>
-        public void StopLiveView(bool LVoff = true)
+        public void StopLiveView()
         {
             if (IsLiveViewOn)
             {
                 var t = LogInfoAsync("Stopping liveview");
-                this.LVoff = LVoff;
+                this.LVoff = true;
                 IsLiveViewOn = false;
 
                 //Wait 5 seconds for evf thread to finish, otherwise manually stop
