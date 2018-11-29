@@ -1693,6 +1693,12 @@ namespace EDSDK.NET
         {
             return await Task.Run<FileInfo>(async () =>
             {
+                if(IsFilming || IsLiveViewOn)
+                {
+                    logger.LogWarning("Ignoring attempt to take photo whilst filming or in live-view mode. Filming: {Filming}, LiveView: {LiveView}", IsFilming, IsLiveViewOn);
+                    return null;
+                }
+
                 takePhotoCompletionSource = new TaskCompletionSource<FileInfo>();
                 SetSaveToLocation(saveFile.Directory);
                 this.ImageSaveFilename = saveFile.Name;
