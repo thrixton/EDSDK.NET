@@ -1524,7 +1524,7 @@ namespace EDSDK.NET
                 {                    
                     LogPropertyValue(PropID_Record, GetSetting(PropID_Record));
                     var tx = Log(LogLevel.Critical, "Camera is not in movie mode. Check 'PropID_FixedMovie'. Call EdsSendCommand(CameraCommand_MovieSelectSwON, 0). Exit!");
-                    throw new ArgumentException("Camera in invalid mode", nameof(PropID_FixedMovie));
+                    //throw new ArgumentException("Camera in invalid mode", nameof(PropID_FixedMovie));
                 }
                 IsFilming = true;
 
