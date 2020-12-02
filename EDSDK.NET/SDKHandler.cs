@@ -1192,6 +1192,27 @@ namespace EDSDK.NET
         }
 
         /// <summary>
+        /// Sends a camera command
+        /// </summary>
+        /// <param name="propertyId">The property ID</param>
+        /// <param name="value">The value which will be set</param>
+        public void SendCommand(uint commandId, int value)
+        {
+            Log(LogLevel.Debug, "Sending command. CommandId: {CommandId}, Value: {Value}", $"0x{commandId.ToString("X")}", $"0x{value.ToString("X")}").RunSynchronously();
+            if (MainCamera.Ref != IntPtr.Zero)
+            {
+
+                SendSDKCommand(delegate
+                {
+                    var cThread = Thread.CurrentThread;
+                    var t = LogInfoAsync("Executing SDK command. ThreadName: {ThreadName}, ApartmentState: {ApartmentState}", cThread.Name, cThread.GetApartmentState());
+                    Error = EdsSendCommand(MainCamera.Ref, commandId, value);
+                }, sdkAction: nameof(EdsSetPropertyData));
+            }
+            else { throw new ArgumentNullException("Camera or camera reference is null/zero"); }
+        }
+
+        /// <summary>
         /// Sets a DateTime value for the given property ID
         /// </summary>
         /// <param name="PropID">The property ID</param>
@@ -1499,17 +1520,11 @@ namespace EDSDK.NET
                 SetSetting(PropID_Evf_OutputDevice, 3);
 
                 //Check if the camera is ready to film
-                if (GetSetting(PropID_Record) != (uint)PropID_Record_Status.Movie_shooting_ready)
-                {
-                    //DOES NOT WORK, readonly setting?
-                    //DOES NOT THROW AN ERROR
-                    //SetSetting(PropID_Record, (uint)EdsDriveMode.Video);
-                    //SetSetting(PropID_Record, (uint)PropID_Record_Status.Movie_shooting_ready);
-
-
+                if (GetSetting(PropID_FixedMovie) == 0)
+                {                    
                     LogPropertyValue(PropID_Record, GetSetting(PropID_Record));
-                    var tx = Log(LogLevel.Critical, "Camera physical switch must be in movie record mode. Leave in this mode permanently!");
-                    //throw new ArgumentException("Camera in invalid mode", nameof(PropID_Record));
+                    var tx = Log(LogLevel.Critical, "Camera is not in movie mode. Check 'PropID_FixedMovie'. Call EdsSendCommand(CameraCommand_MovieSelectSwON, 0). Exit!");
+                    throw new ArgumentException("Camera in invalid mode", nameof(PropID_FixedMovie));
                 }
                 IsFilming = true;
 
