@@ -630,188 +630,97 @@ namespace EDSDK.NET
 
             switch (inPropertyID)
             {
-                case PropID_AEBracket:
-                    break;
-                case PropID_AEMode:
-                    break;
-                case PropID_AEModeSelect:
-                    break;
-                case PropID_AFMode:
-                    break;
-                case PropID_Artist:
-                    break;
-                case PropID_AtCapture_Flag:
-                    break;
-                case PropID_Av:
-                    break;
-                case PropID_AvailableShots:
-                    break;
-                case PropID_BatteryLevel:
-                    break;
-                case PropID_BatteryQuality:
-                    break;
+                case PropID_Unknown:
+                case PropID_ProductName:
                 case PropID_BodyIDEx:
-                    break;
-                case PropID_Bracket:
-                    break;
-                case PropID_CFn:
-                    break;
-                case PropID_ClickWBPoint:
-                    break;
-                case PropID_ColorMatrix:
-                    break;
-                case PropID_ColorSaturation:
-                    break;
-                case PropID_ColorSpace:
-                    break;
-                case PropID_ColorTemperature:
-                    break;
-                case PropID_ColorTone:
-                    break;
-                case PropID_Contrast:
-                    break;
-                case PropID_Copyright:
-                    break;
+                case PropID_OwnerName:
+                case PropID_MakerName:
                 case PropID_DateTime:
-                    break;
-                case PropID_DepthOfField:
-                    break;
-                case PropID_DigitalExposure:
-                    break;
+                case PropID_FirmwareVersion:
+                case PropID_BatteryLevel:
+                case PropID_CFn:
+                case PropID_SaveTo:
+                case PropID_ImageQuality:
+                case PropID_Orientation:
+                case PropID_ICCProfile:
+                case PropID_FocusInfo:
+                case PropID_WhiteBalance:
+                case PropID_ColorTemperature:
+                case PropID_WhiteBalanceShift:
+                case PropID_ColorSpace:
+                case PropID_PictureStyle:
+                case PropID_PictureStyleDesc:
+                case PropID_PictureStyleCaption:
+                case PropID_AEMode:
+                case PropID_AEModeSelect:
                 case PropID_DriveMode:
-                    break;
-                case PropID_EFCompensation:
-                    break;
-                case PropID_Evf_AFMode:
-                    break;
-                case PropID_Evf_ColorTemperature:
-                    break;
-                case PropID_Evf_DepthOfFieldPreview:
-                    break;
-                case PropID_Evf_FocusAid:
-                    break;
-                case PropID_Evf_Histogram:
-                    break;
-                case PropID_Evf_HistogramStatus:
-                    break;
-                case PropID_Evf_ImagePosition:
-                    break;
+                case PropID_ISOSpeed:
+                case PropID_MeteringMode:
+                case PropID_AFMode:
+                case PropID_Av:
+                case PropID_Tv:
+                case PropID_ExposureCompensation:
+                case PropID_FocalLength:
+                case PropID_AvailableShots:
+                case PropID_Bracket:
+                case PropID_WhiteBalanceBracket:
+                case PropID_LensName:
+                case PropID_AEBracket:
+                case PropID_FEBracket:
+                case PropID_ISOBracket:
+                case PropID_NoiseReduction:
+                case PropID_FlashOn:
+                case PropID_RedEye:
+                case PropID_FlashMode:
+                case PropID_LensStatus:
+                case PropID_Artist:
+                case PropID_Copyright:
                 case PropID_Evf_Mode:
+                case PropID_Evf_WhiteBalance:
+                case PropID_Evf_ColorTemperature:
+                case PropID_Evf_DepthOfFieldPreview:
+                case PropID_Evf_Zoom:
+                case PropID_Evf_ZoomPosition:
+                case PropID_Evf_ImagePosition:
+                case PropID_Evf_HistogramStatus:
+                case PropID_Evf_AFMode:
+                case PropID_Evf_HistogramY:
+                case PropID_Evf_HistogramR:
+                case PropID_Evf_HistogramG:
+                case PropID_Evf_HistogramB:
+                case PropID_Evf_CoordinateSystem:
+                case PropID_Evf_ZoomRect:
+                case PropID_Record:
+                case PropID_GPSVersionID:
+                case PropID_GPSLatitudeRef:
+                case PropID_GPSLatitude:
+                case PropID_GPSLongitudeRef:
+                case PropID_GPSLongitude:
+                case PropID_GPSAltitudeRef:
+                case PropID_GPSAltitude:
+                case PropID_GPSTimeStamp:
+                case PropID_GPSSatellites:
+                case PropID_GPSStatus:
+                case PropID_GPSMapDatum:
+                case PropID_GPSDateStamp:
+                case PropID_DC_Zoom:
+                case PropID_DC_Strobe:
+                case PropID_LensBarrelStatus:
+                case PropID_TempStatus:
+                case PropID_Evf_RollingPitching:
+                case PropID_FixedMovie:
+                case PropID_MovieParam:
+                case PropID_Evf_ClickWBCoeffs:
+                case PropID_ManualWhiteBalanceData:
+                case PropID_MirrorUpSetting:
+                case PropID_MirrorLockUpState:
+                case PropID_UTCTime:
+                case PropID_TimeZone:
+                case PropID_SummerTimeSetting:
+                case PropID_AutoPowerOffSetting:                    
                     break;
                 case PropID_Evf_OutputDevice:
                     if (IsLiveViewOn == true) DownloadEvf();
-                    break;
-                case PropID_Evf_WhiteBalance:
-                    break;
-                case PropID_Evf_Zoom:
-                    break;
-                case PropID_Evf_ZoomPosition:
-                    break;
-                case PropID_ExposureCompensation:
-                    break;
-                case PropID_FEBracket:
-                    break;
-                case PropID_FilterEffect:
-                    break;
-                case PropID_FirmwareVersion:
-                    break;
-                case PropID_FlashCompensation:
-                    break;
-                case PropID_FlashMode:
-                    break;
-                case PropID_FlashOn:
-                    break;
-                case PropID_FocalLength:
-                    break;
-                case PropID_FocusInfo:
-                    break;
-                case PropID_GPSAltitude:
-                    break;
-                case PropID_GPSAltitudeRef:
-                    break;
-                case PropID_GPSDateStamp:
-                    break;
-                case PropID_GPSLatitude:
-                    break;
-                case PropID_GPSLatitudeRef:
-                    break;
-                case PropID_GPSLongitude:
-                    break;
-                case PropID_GPSLongitudeRef:
-                    break;
-                case PropID_GPSMapDatum:
-                    break;
-                case PropID_GPSSatellites:
-                    break;
-                case PropID_GPSStatus:
-                    break;
-                case PropID_GPSTimeStamp:
-                    break;
-                case PropID_GPSVersionID:
-                    break;
-                case PropID_HDDirectoryStructure:
-                    break;
-                case PropID_ICCProfile:
-                    break;
-                case PropID_ImageQuality:
-                    break;
-                case PropID_ISOBracket:
-                    break;
-                case PropID_ISOSpeed:
-                    break;
-                case PropID_JpegQuality:
-                    break;
-                case PropID_LensName:
-                    break;
-                case PropID_LensStatus:
-                    break;
-                case PropID_Linear:
-                    break;
-                case PropID_MakerName:
-                    break;
-                case PropID_MeteringMode:
-                    break;
-                case PropID_NoiseReduction:
-                    break;
-                case PropID_Orientation:
-                    break;
-                case PropID_OwnerName:
-                    break;
-                case PropID_ParameterSet:
-                    break;
-                case PropID_PhotoEffect:
-                    break;
-                case PropID_PictureStyle:
-                    break;
-                case PropID_PictureStyleCaption:
-                    break;
-                case PropID_PictureStyleDesc:
-                    break;
-                case PropID_ProductName:
-                    break;
-                case PropID_Record:
-                    break;
-                case PropID_RedEye:
-                    break;
-                case PropID_SaveTo:
-                    break;
-                case PropID_Sharpness:
-                    break;
-                case PropID_ToneCurve:
-                    break;
-                case PropID_ToningEffect:
-                    break;
-                case PropID_Tv:
-                    break;
-                case PropID_Unknown:
-                    break;
-                case PropID_WBCoeffs:
-                    break;
-                case PropID_WhiteBalance:
-                    break;
-                case PropID_WhiteBalanceBracket:
-                    break;
-                case PropID_WhiteBalanceShift:
                     break;
             }
             return EDS_ERR_OK;
@@ -848,16 +757,11 @@ namespace EDSDK.NET
             switch (inEvent)
             {
                 case StateEvent_All:
-                    break;
-                case StateEvent_AfResult:
-                    break;
-                case StateEvent_BulbExposureTime:
-                    break;
-                case StateEvent_CaptureError:
-                    break;
-                case StateEvent_InternalError:
-                    break;
                 case StateEvent_JobStatusChanged:
+                case StateEvent_ShutDownTimerUpdate:
+                case StateEvent_CaptureError:
+                case StateEvent_InternalError:
+                case StateEvent_AfResult:
                     break;
                 case StateEvent_Shutdown:
                     CameraSessionOpen = false;
@@ -867,8 +771,6 @@ namespace EDSDK.NET
                         // Not supported in .NET Core. Transition to cancellation token LVThread.Abort();
                     }
                     OnCameraHasShutdown();
-                    break;
-                case StateEvent_ShutDownTimerUpdate:
                     break;
                 case StateEvent_WillSoonShutDown:
                     if (KeepAlive)
