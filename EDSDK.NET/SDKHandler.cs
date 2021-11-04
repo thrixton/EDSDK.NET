@@ -1846,7 +1846,7 @@ namespace EDSDK.NET
             var minPercent = 1f;
             RunForEachVolume((childReference, volumeInfo) =>
             {
-                var freePc = volumeInfo.FreeSpaceInBytes / volumeInfo.MaxCapacity;
+                var freePc = volumeInfo.FreeSpaceInBytes / (float)volumeInfo.MaxCapacity;
                 logger.LogDebug("Camera volume free space. volume: {volume}, freeSpaceBytes: {freeSpaceBytes}, maxCapacity: {maxCapacity}, freePercent: {freePercent}", volumeInfo.szVolumeLabel, volumeInfo.FreeSpaceInBytes, volumeInfo.MaxCapacity, freePc);
                 if (freePc < minPercent)
                 {
