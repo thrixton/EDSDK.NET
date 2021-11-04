@@ -1831,6 +1831,33 @@ namespace EDSDK.NET
 
         public void FormatAllVolumes()
         {
+            RunForEachVolume((childReference, volumeInfo) =>
+            {
+                logger.LogInformation("Formatting volume. Volume: {Volume}", volumeInfo.szVolumeLabel);
+                SendSDKCommand(() =>
+                {
+                    Error = EdsFormatVolume(childReference);
+                });
+            });
+        }
+
+        public float GetMinVolumeSpacePercent()
+        {
+            var minPercent = 1f;
+            RunForEachVolume((childReference, volumeInfo) =>
+            {
+                var freePc = volumeInfo.FreeSpaceInBytes / volumeInfo.MaxCapacity;
+                logger.LogDebug("Camera volume free space. volume: {volume}, freeSpaceBytes: {freeSpaceBytes}, maxCapacity: {maxCapacity}, freePercent: {freePercent}", volumeInfo.szVolumeLabel, volumeInfo.FreeSpaceInBytes, volumeInfo.MaxCapacity, freePc);
+                if (freePc < minPercent)
+                {
+                    minPercent = freePc;
+                }
+            });
+            return minPercent;
+        }
+
+        private void RunForEachVolume(Action<IntPtr, EdsVolumeInfo> action)
+        {
             //get the number of volumes currently installed in the camera
             int VolumeCount;
             Error = EdsGetChildCount(GetCamera().Reference, out VolumeCount);
@@ -1843,17 +1870,14 @@ namespace EDSDK.NET
                 EdsVolumeInfo volumeInfo = new EdsVolumeInfo();
                 SendSDKCommand(delegate { Error = EdsGetVolumeInfo(childReference, out volumeInfo); });
 
-                    if (volumeInfo.StorageType != (uint)EdsStorageType.Non && volumeInfo.Access == (uint)EdsAccess.ReadWrite)
-                    {
-                        logger.LogInformation("Formatting volume. Volume: {Volume}", volumeInfo.szVolumeLabel);
-                        SendSDKCommand(() =>
-                        {
-                            Error = EdsFormatVolume(childReference);
-                        });
+                if (volumeInfo.StorageType != (uint)EdsStorageType.Non && volumeInfo.Access == (uint)EdsAccess.ReadWrite)
+                {
+                    action(childReference, volumeInfo);
                 }
                 Error = EdsRelease(childReference);
             }
         }
+
 
         public void FormatVolume(CameraFileEntry volume)
         {
