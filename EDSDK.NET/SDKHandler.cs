@@ -61,7 +61,7 @@ namespace EDSDK.NET
             get => _imageSaveFilename;
             set
             {
-                var t = LogInfoAsync("Setting ImageSaveFilename. ImageSaveFilename: {ImageSaveFilename}", _imageSaveFilename);
+                var t = LogInfoAsync("Setting ImageSaveFilename. ImageSaveFilename: {ImageSaveFilename}", value);
                 _imageSaveFilename = value;
             }
         }
@@ -854,8 +854,10 @@ namespace EDSDK.NET
                 case StateEvent_BulbExposureTime:
                     break;
                 case StateEvent_CaptureError:
+                    LogError("Error event. error: {error}", nameof(StateEvent_CaptureError));
                     break;
                 case StateEvent_InternalError:
+                    LogError("Error event. error: {error}", nameof(StateEvent_InternalError));
                     break;
                 case StateEvent_JobStatusChanged:
                     break;
@@ -1406,6 +1408,10 @@ namespace EDSDK.NET
                 if (!cancelLiveViewWait.WaitOne(TimeSpan.FromSeconds(5)))
                 {
                     KillLiveView();
+                }
+                else
+                {
+                    logger.LogDebug("LiveView stopped cleanly");
                 }
             }
 
