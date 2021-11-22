@@ -1597,7 +1597,8 @@ namespace EDSDK.NET
                 SetSetting(PropID_Evf_OutputDevice, 3);
 
                 //Check if the camera is ready to film
-                if (GetSetting(PropID_Record) != (uint)PropID_Record_Status.Movie_shooting_ready)
+                var recordStatus = GetSetting(PropID_Record);
+                if (recordStatus != (uint)PropID_Record_Status.Movie_shooting_ready)
                 {
                     //DOES NOT WORK, readonly setting?
                     //DOES NOT THROW AN ERROR
@@ -1605,8 +1606,9 @@ namespace EDSDK.NET
                     //SetSetting(PropID_Record, (uint)PropID_Record_Status.Movie_shooting_ready);
 
 
-                    LogPropertyValue(PropID_Record, GetSetting(PropID_Record));
-                    var tx = Log(LogLevel.Critical, "Camera physical switch must be in movie record mode. Leave in this mode permanently!");
+                    LogPropertyValue(PropID_Record, recordStatus);
+                    var tx = Log(LogLevel.Information, "Camera reporting incorrect mode. expected. Continue. {expected}, was: {was}", PropID_Record_Status.Movie_shooting_ready, recordStatus);
+                    tx = Log(LogLevel.Information, "Camera physical switch must be in movie record mode. Leave in this mode permanently!");
                     //throw new ArgumentException("Camera in invalid mode", nameof(PropID_Record));
                 }
                 IsFilming = true;
